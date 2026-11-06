@@ -6,6 +6,8 @@
 
 pub mod action;
 pub mod cli;
+pub mod demo;
+pub mod effects;
 pub mod game;
 pub mod highscore;
 pub mod input;
@@ -16,6 +18,8 @@ pub mod terminal;
 pub mod update;
 
 pub use action::Action;
+pub use demo::demo_merge_app;
+pub use effects::Effects;
 pub use game::{Board, Direction, Game, Merge, MoveOutcome, SlideOutcome, Spawn};
 pub use highscore::{FileStore, HighScoreError, HighScoreStore, MemoryStore};
 pub use input::action_for_key;

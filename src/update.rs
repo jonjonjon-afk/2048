@@ -7,6 +7,7 @@
 use core::time::Duration;
 
 use crate::action::Action;
+use crate::effects::Effects;
 use crate::game::Game;
 
 /// How long a failed save keeps its footer warning, in milliseconds.
@@ -19,11 +20,13 @@ pub enum Effect {
     SaveBest(u64),
 }
 
-/// Everything the UI needs besides the game rules: quit latch and warning.
+/// Everything the UI needs besides the game rules: quit latch, effects and warning.
 #[derive(Clone, Debug)]
 pub struct App {
     pub game: Game,
     pub quit: bool,
+    /// Effect timeline, advanced only by the injected `dt`.
+    pub effects: Effects,
     warning: Option<Duration>,
 }
 
@@ -33,11 +36,13 @@ impl App {
         Self {
             game,
             quit: false,
+            effects: Effects::new(),
             warning: None,
         }
     }
 
-    /// Apply one action and advance the warning timer by `dt`.
+    /// Apply one action, start effects for the resulting merge/spawn/new best,
+    /// then advance every timer by `dt`.
     ///
     /// Returns the effects the shell has to carry out (saving the best score).
     pub fn update(&mut self, action: Option<Action>, dt: Duration) -> Vec<Effect> {
@@ -46,9 +51,18 @@ impl App {
 
         match action {
             Some(Action::Move(direction)) => {
-                self.game.apply_move(direction);
+                let outcome = self.game.apply_move(direction);
+                for merge in &outcome.merges {
+                    self.effects.trigger_merge(*merge);
+                }
+                if let Some(spawn) = outcome.spawned {
+                    self.effects.trigger_spawn(spawn.cell);
+                }
             }
-            Some(Action::Restart) => self.game.restart(),
+            Some(Action::Restart) => {
+                self.game.restart();
+                self.effects.clear();
+            }
             Some(Action::Quit) => {
                 self.quit = true;
                 effects.push(Effect::SaveBest(self.game.best));
@@ -59,6 +73,7 @@ impl App {
 
         // A new record is written immediately, once per new value.
         if self.game.best > best_before {
+            self.effects.start_best_pulse();
             effects.push(Effect::SaveBest(self.game.best));
         }
 
@@ -76,8 +91,10 @@ impl App {
         self.warning.is_some_and(|remaining| !remaining.is_zero())
     }
 
-    /// Advance the warning timer. A frame that reaches the deadline hides it.
+    /// Advance the effect clock and the warning timer by `dt`.
     fn advance(&mut self, dt: Duration) {
+        self.effects.advance(dt);
+
         let Some(remaining) = self.warning else {
             return;
         };

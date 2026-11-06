@@ -5,7 +5,7 @@
 //! returned effects to the high-score store, and draws the result.
 
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event};
 
@@ -16,6 +16,9 @@ use crate::input::action_for_key;
 use crate::render::render;
 use crate::terminal::TerminalGuard;
 use crate::update::{App, Effect};
+
+/// Longest `dt` the live shell forwards; a resumed terminal must not jump the effects.
+pub const MAX_DT_MILLIS: u64 = 250;
 
 /// Application state plus the store that owns the best score.
 pub struct Shell<S: HighScoreStore> {
@@ -56,10 +59,19 @@ impl<S: HighScoreStore> Shell<S> {
 
 /// Run the interactive game until the player quits.
 pub fn run_live<S: HighScoreStore>(store: S, seed: u64, fps: u32) -> io::Result<()> {
+    run_loop(Shell::start(store, seed), fps)
+}
+
+/// Run the interactive game from an already-built application state (demo mode).
+pub fn run_live_app<S: HighScoreStore>(app: App, store: S, fps: u32) -> io::Result<()> {
+    run_loop(Shell::from_app(app, store), fps)
+}
+
+fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<()> {
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard::new(ratatui::restore);
-    let mut shell = Shell::start(store, seed);
     let frame = Duration::from_secs(1) / fps.max(1);
+    let mut last = Instant::now();
 
     while !shell.app.quit {
         terminal.draw(|area| render(area, &shell.app))?;
@@ -72,7 +84,12 @@ pub fn run_live<S: HighScoreStore>(store: S, seed: u64, fps: u32) -> io::Result<
         } else {
             None
         };
-        shell.apply(action, frame);
+
+        // Measured, clamped dt: animation speed follows real time, but a long
+        // stall (sleep, suspend) may not skip whole effects.
+        let elapsed = last.elapsed().min(Duration::from_millis(MAX_DT_MILLIS));
+        last = Instant::now();
+        shell.apply(action, elapsed);
     }
 
     Ok(())

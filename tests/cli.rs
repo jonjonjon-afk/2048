@@ -143,3 +143,62 @@ fn no_persist_never_writes_the_real_path() {
 
     let _ = fs::remove_dir_all(&xdg);
 }
+
+#[test]
+fn demo_and_demo_merge_render_the_same_frame() {
+    let demo = run(&["--render-once", "--demo", "--frame", "14", "--no-persist"]);
+    let demo_merge = run(&[
+        "--render-once",
+        "--demo-merge",
+        "--frame",
+        "14",
+        "--no-persist",
+    ]);
+
+    assert!(demo.status.success(), "--demo must exit 0");
+    assert!(demo_merge.status.success(), "--demo-merge must exit 0");
+    assert_eq!(demo.stdout, demo_merge.stdout);
+}
+
+#[test]
+fn render_once_demo_merge_frame14_contains_ring_and_spark() {
+    let output = run(&[
+        "--render-once",
+        "--demo-merge",
+        "--frame",
+        "14",
+        "--no-persist",
+    ]);
+
+    assert!(output.status.success(), "--demo-merge must exit 0");
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    assert!(stdout.contains('░'), "frame 14 is missing the ░ shockwave");
+    assert!(stdout.contains('✦'), "frame 14 is missing the ✦ spark");
+}
+
+#[test]
+fn effect_snapshots_match_frames_4_14_24() {
+    let fixtures = [
+        (4u64, include_str!("fixtures/effect_100x36_frame_04.txt")),
+        (14, include_str!("fixtures/effect_100x36_frame_14.txt")),
+        (24, include_str!("fixtures/effect_100x36_frame_24.txt")),
+    ];
+
+    for (frame, fixture) in fixtures {
+        let number = frame.to_string();
+        let output = run(&[
+            "--render-once",
+            "--demo-merge",
+            "--frame",
+            &number,
+            "--no-persist",
+        ]);
+
+        assert!(output.status.success(), "frame {frame} must exit 0");
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("stdout is UTF-8"),
+            fixture,
+            "frame {frame} must match its committed fixture"
+        );
+    }
+}

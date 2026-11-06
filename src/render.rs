@@ -3,6 +3,8 @@
 //! Rendering only reads the application state. It never mutates the game and
 //! never looks at a clock, so two renders of the same state are identical.
 
+use core::time::Duration;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -10,6 +12,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{Frame, Terminal};
 
+use crate::effects::{Shockwave, Spark, RING_SYMBOLS};
 use crate::update::App;
 
 /// Width of one board card in columns.
@@ -31,6 +34,23 @@ const BACKGROUND: Color = Color::Rgb(6, 8, 20);
 const ACCENT: Color = Color::Rgb(0, 255, 200);
 const MUTED: Color = Color::Rgb(110, 120, 165);
 const WARNING: Color = Color::Rgb(255, 90, 90);
+const SPARK_COLOUR: Color = Color::Rgb(230, 245, 255);
+
+/// Normal header style, including the `BEST` label.
+pub fn header_style() -> Style {
+    Style::new()
+        .fg(ACCENT)
+        .bg(BACKGROUND)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// Header style while a new best is being celebrated.
+pub fn best_pulse_style() -> Style {
+    Style::new()
+        .fg(Color::Rgb(255, 245, 150))
+        .bg(BACKGROUND)
+        .add_modifier(Modifier::BOLD)
+}
 
 /// Where the board block starts inside a frame of the given size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +70,8 @@ pub fn board_layout(width: u16, height: u16) -> BoardLayout {
 /// Draw one complete frame.
 pub fn render(frame: &mut Frame, app: &App) {
     let area = frame.area();
+    render_plasma(frame.buffer_mut(), area, app.effects.elapsed());
+
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         render_too_small(frame, area);
         return;
@@ -61,9 +83,40 @@ pub fn render(frame: &mut Frame, app: &App) {
     frame.render_widget(outer, area);
 
     render_header(frame, area, app);
-    render_board(frame, area, app);
+    render_board_cards(frame, area, app);
+    render_effects(frame, area, app);
+    render_board_labels(frame, area, app);
     render_footer(frame, area, app);
     render_overlay(frame, area, app);
+}
+
+/// Paint the dim plasma background over every cell of the frame.
+///
+/// The phase is derived only from the injected effect clock, so two renders at
+/// the same elapsed time are identical and the colour ignores the wall clock.
+fn render_plasma(buffer: &mut Buffer, area: Rect, elapsed: Duration) {
+    let time = elapsed.as_secs_f32();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let column = x as f32;
+            let row = y as f32;
+            let value = (column * 0.11 + time * 1.7).sin()
+                + (row * 0.13 - time * 1.1).cos()
+                + ((column + row) * 0.07 + time * 0.9).sin();
+            let wave = ((value / 3.0 + 1.0) * 0.5).clamp(0.0, 1.0);
+            let red = 4 + (wave * 22.0) as u8;
+            let green = 6 + (wave * 30.0) as u8;
+            let blue = 14 + ((1.0 - wave) * 34.0) as u8;
+            let cell = &mut buffer[(area.x + x, area.y + y)];
+            cell.set_symbol(" ").set_style(
+                Style::new().fg(Color::Rgb(red, green, blue)).bg(Color::Rgb(
+                    red / 3,
+                    green / 3,
+                    blue / 3,
+                )),
+            );
+        }
+    }
 }
 
 fn render_too_small(frame: &mut Frame, area: Rect) {
@@ -83,76 +136,159 @@ fn render_too_small(frame: &mut Frame, area: Rect) {
 
 fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let left = "┌ 2048 ";
-    let right = format!(" SCORE {}   BEST {} ┐", app.game.score, app.game.best);
-    let fill = (area.width as usize).saturating_sub(left.chars().count() + right.chars().count());
-    let mut line = String::from(left);
-    for _ in 0..fill {
-        line.push('─');
-    }
-    line.push_str(&right);
+    let score = format!(" SCORE {}   ", app.game.score);
+    let best = format!("BEST {} ┐", app.game.best);
+    let fill = (area.width as usize)
+        .saturating_sub(left.chars().count() + score.chars().count() + best.chars().count());
+    let line = format!("{left}{}{score}{best}", "─".repeat(fill));
 
-    let paragraph = Paragraph::new(line).style(
-        Style::new()
-            .fg(ACCENT)
-            .bg(BACKGROUND)
-            .add_modifier(Modifier::BOLD),
-    );
+    let paragraph = Paragraph::new(line).style(header_style());
     frame.render_widget(paragraph, Rect::new(area.x, area.y, area.width, 1));
+
+    if app.effects.is_best_pulsing() {
+        let x = area.x + (left.chars().count() + fill + score.chars().count()) as u16;
+        let width = format!("BEST {}", app.game.best).chars().count() as u16;
+        frame
+            .buffer_mut()
+            .set_style(Rect::new(x, area.y, width, 1), best_pulse_style());
+    }
 }
 
-fn render_board(frame: &mut Frame, area: Rect, app: &App) {
+fn cell_origin(layout: BoardLayout, cell: usize) -> Rect {
+    let row = (cell / 4) as u16;
+    let column = (cell % 4) as u16;
+    Rect::new(
+        layout.left + column * (CARD_WIDTH + CARD_GAP),
+        layout.top + row * (CARD_HEIGHT + CARD_GAP),
+        CARD_WIDTH,
+        CARD_HEIGHT,
+    )
+}
+
+fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
     let layout = board_layout(area.width, area.height);
 
     for cell in 0..16 {
-        let row = (cell / 4) as u16;
-        let column = (cell % 4) as u16;
-        let origin = Rect::new(
-            layout.left + column * (CARD_WIDTH + CARD_GAP),
-            layout.top + row * (CARD_HEIGHT + CARD_GAP),
-            CARD_WIDTH,
-            CARD_HEIGHT,
-        );
+        let origin = cell_origin(layout, cell);
         let value = app.game.board.cell(cell);
-        let colour = tile_colour(value);
+        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
+        let border = if bright {
+            Style::new().fg(Color::Rgb(255, 255, 255)).bg(BACKGROUND)
+        } else {
+            Style::new().fg(tile_colour(value)).bg(BACKGROUND)
+        };
         let card = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(colour))
+            .border_style(border)
             .style(Style::new().bg(BACKGROUND));
         frame.render_widget(card, origin);
+    }
+}
 
-        if value != 0 {
-            let inner = Rect::new(
-                origin.x + 1,
-                origin.y + 1,
-                origin.width - 2,
-                origin.height - 2,
-            );
-            let label = Paragraph::new(value.to_string())
-                .alignment(Alignment::Center)
-                .style(
-                    Style::new()
-                        .fg(colour)
-                        .bg(BACKGROUND)
-                        .add_modifier(Modifier::BOLD),
-                );
-            frame.render_widget(label, inner);
+fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
+    let layout = board_layout(area.width, area.height);
+
+    for cell in 0..16 {
+        let value = app.game.board.cell(cell);
+        if value == 0 {
+            continue;
         }
+        let origin = cell_origin(layout, cell);
+        let inner = Rect::new(
+            origin.x + 1,
+            origin.y + 1,
+            origin.width - 2,
+            origin.height - 2,
+        );
+        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
+        let style = if bright {
+            bright_tile_style(value)
+        } else {
+            tile_style(value)
+        };
+        let label = Paragraph::new(value.to_string())
+            .alignment(Alignment::Center)
+            .style(style);
+        frame.render_widget(label, inner);
+    }
+}
+
+fn render_effects(frame: &mut Frame, area: Rect, app: &App) {
+    let layout = board_layout(area.width, area.height);
+    let board = Rect::new(layout.left, layout.top, BOARD_WIDTH, BOARD_HEIGHT);
+    let buffer = frame.buffer_mut();
+
+    for wave in app.effects.shockwaves() {
+        draw_shockwave(buffer, board, wave);
+    }
+    for spark in app.effects.sparks() {
+        draw_spark(buffer, board, spark);
+    }
+}
+
+fn draw_shockwave(buffer: &mut Buffer, board: Rect, wave: &Shockwave) {
+    let radius = wave.radius();
+    let column = (wave.cell % 4) as i32;
+    let row = (wave.cell / 4) as i32;
+    let centre_x = column * (CARD_WIDTH as i32 + CARD_GAP as i32) + CARD_WIDTH as i32 / 2;
+    let centre_y = row * (CARD_HEIGHT as i32 + CARD_GAP as i32) + CARD_HEIGHT as i32 / 2;
+    let colour = tile_colour(wave.value);
+
+    for y in 0..BOARD_HEIGHT as i32 {
+        for x in 0..BOARD_WIDTH as i32 {
+            let distance = (x - centre_x).abs().max((y - centre_y).abs());
+            if distance == 0 || distance > radius || distance + 2 < radius {
+                continue;
+            }
+            let index = (distance + 2 - radius).clamp(0, 2) as usize;
+            if let Some(cell) = buffer.cell_mut((board.x + x as u16, board.y + y as u16)) {
+                cell.set_char(RING_SYMBOLS[index])
+                    .set_style(Style::new().fg(colour).bg(BACKGROUND));
+            }
+        }
+    }
+}
+
+fn draw_spark(buffer: &mut Buffer, board: Rect, spark: &Spark) {
+    let column = (spark.origin_cell % 4) as f32;
+    let row = (spark.origin_cell / 4) as f32;
+    let centre_x = column * (CARD_WIDTH + CARD_GAP) as f32 + CARD_WIDTH as f32 / 2.0;
+    let centre_y = row * (CARD_HEIGHT + CARD_GAP) as f32 + CARD_HEIGHT as f32 / 2.0;
+    let distance = spark.distance();
+    let x = centre_x + spark.offset_x + spark.dir_x * distance;
+    let y = centre_y + spark.offset_y + spark.dir_y * distance;
+    if x < 0.0 || y < 0.0 {
+        return;
+    }
+    let x = x.round() as u16;
+    let y = y.round() as u16;
+    if x >= BOARD_WIDTH || y >= BOARD_HEIGHT {
+        return;
+    }
+    if let Some(cell) = buffer.cell_mut((board.x + x, board.y + y)) {
+        cell.set_char(spark.symbol)
+            .set_style(Style::new().fg(SPARK_COLOUR).bg(BACKGROUND));
     }
 }
 
 fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
     let legend = Rect::new(area.x + 4, area.y + area.height - 3, area.width - 8, 1);
     frame.render_widget(
-        Paragraph::new("Arrows / WASD move   R restart   Q quit").style(Style::new().fg(MUTED)),
+        Paragraph::new("Arrows / WASD move   R restart   Q quit")
+            .style(Style::new().fg(MUTED).bg(BACKGROUND)),
         legend,
     );
 
     if app.warning_active() {
         let warning = Rect::new(area.x + 4, area.y + area.height - 2, area.width - 8, 1);
         frame.render_widget(
-            Paragraph::new("high score not saved (storage error)")
-                .style(Style::new().fg(WARNING).add_modifier(Modifier::BOLD)),
+            Paragraph::new("high score not saved (storage error)").style(
+                Style::new()
+                    .fg(WARNING)
+                    .bg(BACKGROUND)
+                    .add_modifier(Modifier::BOLD),
+            ),
             warning,
         );
     }
@@ -202,11 +338,20 @@ fn overlay(frame: &mut Frame, area: Rect, lines: Vec<Line<'_>>, colour: Color) {
     let inner = block.inner(origin);
 
     frame.render_widget(Clear, origin);
+    frame
+        .buffer_mut()
+        .set_style(origin, Style::new().fg(MUTED).bg(BACKGROUND));
     frame.render_widget(block, origin);
-    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .style(Style::new().fg(colour).bg(BACKGROUND)),
+        inner,
+    );
 }
 
-fn tile_colour(value: u32) -> Color {
+/// The border and label colour for one tile value.
+pub fn tile_colour(value: u32) -> Color {
     match value {
         0 => Color::Rgb(45, 48, 80),
         2 => Color::Rgb(0, 255, 180),
@@ -223,11 +368,23 @@ fn tile_colour(value: u32) -> Color {
     }
 }
 
-/// Render the application to a plain-text frame of exactly `width` x `height`.
-///
-/// Every line is padded with the buffer's spaces, so a 100x36 frame is 36
-/// lines of 100 characters and ends with one newline.
-pub fn frame_text(app: &App, width: u16, height: u16) -> String {
+/// The unlit tile label style; the exact baseline effect tests compare against.
+pub fn tile_style(value: u32) -> Style {
+    Style::new()
+        .fg(tile_colour(value))
+        .bg(BACKGROUND)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn bright_tile_style(value: u32) -> Style {
+    Style::new()
+        .fg(Color::Rgb(255, 255, 255))
+        .bg(tile_colour(value))
+        .add_modifier(Modifier::BOLD)
+}
+
+/// Render the application into a ratatui buffer, for style assertions.
+pub fn frame_buffer(app: &App, width: u16, height: u16) -> Buffer {
     let backend = ratatui::backend::TestBackend::new(width, height);
     let mut terminal = match Terminal::new(backend) {
         Ok(terminal) => terminal,
@@ -236,7 +393,15 @@ pub fn frame_text(app: &App, width: u16, height: u16) -> String {
     if let Err(never) = terminal.draw(|frame| render(frame, app)) {
         match never {}
     }
-    buffer_text(terminal.backend().buffer())
+    terminal.backend().buffer().clone()
+}
+
+/// Render the application to a plain-text frame of exactly `width` x `height`.
+///
+/// Every line is padded with the buffer's spaces, so a 100x36 frame is 36
+/// lines of 100 characters and ends with one newline.
+pub fn frame_text(app: &App, width: u16, height: u16) -> String {
+    buffer_text(&frame_buffer(app, width, height))
 }
 
 fn buffer_text(buffer: &Buffer) -> String {
