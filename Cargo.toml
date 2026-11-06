@@ -1,0 +1,18 @@
+[package]
+name = "game2048"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "A polished, keyboard-first 2048 game for the terminal"
+license = "MIT"
+
+[lib]
+name = "game2048"
+path = "src/lib.rs"
+
+[[bin]]
+name = "game2048"
+path = "src/main.rs"
+
+[dependencies]
+directories = "6.0"
