@@ -106,7 +106,7 @@ board:
 2 0 0 0
 0 0 0 0
 0 0 0 0
-0 0 0 2
+2 0 0 0
 score: 0
 best: 0
 won: false
