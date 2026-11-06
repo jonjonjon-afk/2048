@@ -1,7 +1,6 @@
-//! Headless command line: argument parsing and the `--dump` text format.
+//! Command line: argument parsing, seed resolution and the `--dump` text.
 //!
-//! M1 has no terminal setup. Dump mode always uses the in-memory high-score
-//! store, so a seeded run can never read or write the real score file.
+//! Dump, render-once and self-test modes never open the real high-score file.
 
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,19 +8,29 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::game::{Direction, Game};
 use crate::highscore::{HighScoreStore, MemoryStore};
 
+/// Live frame rate used when `--fps` is absent.
+pub const DEFAULT_FPS: u32 = 30;
+/// Seed used by the demo boards when `--seed` is absent.
+pub const DEMO_SEED: u64 = 42;
+
 /// Usage text for `--help` and for a bare invocation.
 pub const USAGE: &str = "\
-2048 — headless core
+2048 — a keyboard-first terminal game
 
 Usage: game2048 [options]
 
 Options:
-  --seed <u64>     deterministic RNG seed (default: system time)
+  --seed <u64>     deterministic RNG seed (default: system time; demo: 42)
   --moves <lrud>   apply moves in order (used with --dump)
   --dump           print the board state and exit
+  --render-once    print one 100x36 plain-text frame and exit
+  --frame <n>      animation frame for --render-once (16 ms steps)
+  --demo           seeded showcase board with an in-memory score
+  --demo-merge     demo board with a merge ready for captures
+  --no-persist     force the in-memory high-score store
+  --self-test-tui  enter the TUI, draw a few frames, restore and exit
+  --fps <n>        live frame rate (default 30)
   --help, -h       show this help
-
-The terminal UI arrives in M2. This build can dump the core state only.
 ";
 
 /// A recoverable command-line error. The process exits with status 2.
@@ -52,12 +61,37 @@ impl fmt::Display for CliError {
 impl std::error::Error for CliError {}
 
 /// Parsed command-line options.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Args {
     pub seed: Option<u64>,
     pub moves: Vec<Direction>,
     pub dump: bool,
     pub help: bool,
+    pub render_once: bool,
+    pub self_test_tui: bool,
+    pub no_persist: bool,
+    pub demo: bool,
+    pub demo_merge: bool,
+    pub fps: u32,
+    pub frame: Option<u64>,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            seed: None,
+            moves: Vec::new(),
+            dump: false,
+            help: false,
+            render_once: false,
+            self_test_tui: false,
+            no_persist: false,
+            demo: false,
+            demo_merge: false,
+            fps: DEFAULT_FPS,
+            frame: None,
+        }
+    }
 }
 
 /// Parse arguments (without the program name).
@@ -94,6 +128,35 @@ where
                     .collect::<Result<Vec<_>, _>>()?;
             }
             "--dump" => parsed.dump = true,
+            "--render-once" => parsed.render_once = true,
+            "--self-test-tui" => parsed.self_test_tui = true,
+            "--no-persist" => parsed.no_persist = true,
+            "--demo" => parsed.demo = true,
+            "--demo-merge" => parsed.demo_merge = true,
+            "--fps" => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| CliError::new("--fps requires a positive number"))?;
+                let fps = value.parse::<u32>().map_err(|_| {
+                    CliError::new(format!(
+                        "invalid --fps value '{value}': expected a positive u32"
+                    ))
+                })?;
+                if fps == 0 {
+                    return Err(CliError::new(
+                        "invalid --fps value '0': expected a positive frame rate",
+                    ));
+                }
+                parsed.fps = fps;
+            }
+            "--frame" => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| CliError::new("--frame requires a u64 value"))?;
+                parsed.frame = Some(value.parse::<u64>().map_err(|_| {
+                    CliError::new(format!("invalid --frame value '{value}': expected a u64"))
+                })?);
+            }
             "--help" | "-h" => parsed.help = true,
             other => {
                 return Err(CliError::new(format!(
@@ -112,6 +175,16 @@ pub fn default_seed() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos() as u64)
         .unwrap_or(1)
+}
+
+/// The seed for this run: an explicit `--seed` wins, demo modes default to 42,
+/// and live play falls back to the clock.
+pub fn resolved_seed(args: &Args) -> u64 {
+    match args.seed {
+        Some(seed) => seed,
+        None if args.demo || args.demo_merge => DEMO_SEED,
+        None => default_seed(),
+    }
 }
 
 /// Run a headless game and return the exact SPEC 5.6 dump text.
@@ -191,6 +264,72 @@ mod tests {
     fn rejects_missing_values() {
         assert!(args(&["--seed"]).is_err());
         assert!(args(&["--moves"]).is_err());
+    }
+
+    #[test]
+    fn parses_all_spec_flags() {
+        let parsed = args(&[
+            "--render-once",
+            "--self-test-tui",
+            "--no-persist",
+            "--demo",
+            "--demo-merge",
+            "--fps",
+            "60",
+            "--frame",
+            "14",
+            "--seed",
+            "42",
+        ])
+        .unwrap();
+
+        assert_eq!(parsed.seed, Some(42));
+        assert_eq!(parsed.fps, 60);
+        assert_eq!(parsed.frame, Some(14));
+        assert!(parsed.render_once);
+        assert!(parsed.self_test_tui);
+        assert!(parsed.no_persist);
+        assert!(parsed.demo);
+        assert!(parsed.demo_merge);
+    }
+
+    #[test]
+    fn rejects_zero_or_bad_fps() {
+        assert!(args(&["--fps", "0"])
+            .unwrap_err()
+            .message()
+            .contains("--fps"));
+        assert!(args(&["--fps", "x"])
+            .unwrap_err()
+            .message()
+            .contains("--fps"));
+        assert!(args(&["--fps"]).is_err());
+        assert_eq!(args(&["--fps", "60"]).unwrap().fps, 60);
+        assert_eq!(args(&[]).unwrap().fps, DEFAULT_FPS);
+    }
+
+    #[test]
+    fn rejects_bad_frame() {
+        assert!(args(&["--frame", "x"])
+            .unwrap_err()
+            .message()
+            .contains("--frame"));
+        assert!(args(&["--frame"]).is_err());
+        assert_eq!(args(&["--frame", "14"]).unwrap().frame, Some(14));
+    }
+
+    #[test]
+    fn resolved_seed_prefers_explicit_then_demo_then_clock() {
+        let explicit = args(&["--seed", "7", "--demo"]).unwrap();
+        assert_eq!(resolved_seed(&explicit), 7);
+
+        let demo = args(&["--demo"]).unwrap();
+        assert_eq!(resolved_seed(&demo), DEMO_SEED);
+        let demo_merge = args(&["--demo-merge"]).unwrap();
+        assert_eq!(resolved_seed(&demo_merge), DEMO_SEED);
+
+        let live = args(&[]).unwrap();
+        assert_ne!(resolved_seed(&live), DEMO_SEED);
     }
 
     #[test]

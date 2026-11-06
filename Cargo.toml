@@ -15,4 +15,6 @@ name = "game2048"
 path = "src/main.rs"
 
 [dependencies]
+crossterm = "0.29.0"
 directories = "6.0"
+ratatui = "0.30.2"
