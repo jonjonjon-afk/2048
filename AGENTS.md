@@ -30,7 +30,7 @@ A polished, keyboard-first 2048 game that runs in a terminal for the project own
 1. `docs/reviews/M<n>.md`  2. `docs/SPEC.md` (sections 1-7 and your milestone in section 8)  3. `docs/PROGRESS.md`  4. `docs/api-notes.md`
 
 ## Fixed stack
-- Rust 1.85+ (edition 2021), `ratatui` 0.30 with the `crossterm` backend, `crossterm` 0.29, `directories` 6 for the high-score path.
+- Rust 1.88+ (edition 2021), `ratatui` 0.30 with the `crossterm` backend, `crossterm` 0.29, `directories` 6 for the high-score path.
 - `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`, `ratatui::backend::TestBackend` for headless UI snapshots, GNU `make`.
 - The "shader" effects are CPU-rendered ANSI truecolour animations (plasma background, merge shockwave, particle sparks). There is no GPU or GLSL in this project; do not add one.
 - Do not swap the stack or add a dependency without asking the reviewer.

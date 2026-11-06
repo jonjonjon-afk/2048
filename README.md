@@ -37,7 +37,7 @@ make demo    # seeded showcase board and effects
 make e2e     # deterministic captures + persistence round-trip
 ```
 
-Requirements: Rust 1.85+, GNU make, and a terminal with 24-bit colour and at
+Requirements: Rust 1.88+, GNU make, and a terminal with 24-bit colour and at
 least 60x30 cells (100x36 recommended).
 
 ## Where the high score lives
