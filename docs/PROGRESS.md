@@ -3,8 +3,8 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M2 (TUI shell and controls) — gate passed pending reviewer audit
-- Last gate result: M2 PASSED (exit 0; docs/evidence/M2.md "M2 gate")
+- Milestone: M3 (shader-style effects) — gate passed, awaiting reviewer verdict
+- Last gate result: gate exit 0 (docs/evidence/M3.md "M3 gate final")
 - Next action: stop at the gate and wait for the reviewer's verdict
 
 ## Milestones
@@ -12,19 +12,19 @@
 |---|---|---|---|---|
 | M0 | Recon and plan | gate passed, approved with follow-ups | approved with follow-ups | docs/evidence/M0.md |
 | M1 | Headless core and storage | gate passed, approved | approved | docs/evidence/M1.md |
-| M2 | TUI shell and controls | gate passed | pending | docs/evidence/M2.md |
-| M3 | Shader-style effects | not started | - | docs/evidence/M3.md |
+| M2 | TUI shell and controls | gate passed | approved | docs/evidence/M2.md |
+| M3 | Shader-style effects | gate passed | pending | docs/evidence/M3.md |
 | M4 | Polish and handover | not started | - | docs/evidence/M4.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- R1: done — ratatui 0.30.2 + crossterm 0.29.0; all §5.6 flags parse; dump diff empty.
-- R2: done — Action + key mapping (release ignored) + pure update(state, dt); 7 input + 5 update tests.
-- R3: done — Shell over HighScoreStore; load, save on new best/quit, 3 s warning; 4 shell tests + isolation e2e.
-- R4: done — 100x36 and 60x30 snapshots, 8x4 cards, too-small notice; 11 render tests.
-- R5: done — header, footer legend, win and game-over overlays.
-- R6: done — terminal guard, TestBackend render-once, pty self-test, no stray print macros.
-- R7: done — only allowed paths, protected hashes match, no effects deps/code, no unwrap outside tests/main.
-- R8: done — evidence, EVIDENCE/PROGRESS/OPEN_QUESTIONS updated; gate exit 0.
+- F1: add the background-only plasma test, watch it fail, then stop the outer block painting BACKGROUND.
+- F2: fill the evidence header map, assumptions, limitations and near-misses.
+- F3: rebuild the M3 command log sequentially so each R8 block is well formed.
+- F4: add M3 R1-R8 and A4 rows to docs/EVIDENCE.md.
+- F5: set PROGRESS to "gate passed, awaiting reviewer verdict" and list the plasma/live-colour caveats.
+- F6: freeze code, run the exact gate through ev.sh as "M3 gate final".
+- F7: commit all M3 work; leave docs/reviews/M3.md untracked.
+- F8: re-run final-HEAD R8 checks through ev.sh, append, commit again.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 names `CARGO_BIN_EXE_game2048`.
@@ -37,9 +37,18 @@
 - M2: board block is centred with floor division and the same 8x4 cards at both sizes, per the reviewer's geometry decision.
 - M2: render-once and self-test always use `MemoryStore`, so previews are deterministic and isolated.
 - M2: the pty self-test draws 5 frames at 16 ms; the `script` pty is 0x0, so the snapshot tests carry the visible-layout proof.
+- M3: effects live in `Effects` and receive only `advance(dt)`; the shell measures and clamps live `dt` to 250 ms (Q8).
+- M3: sparks use a separate fixed-seed effect RNG, so game RNG draws and spawn timing never change.
+- M3: ring radius is `1 + age_ms * 3 / 100` cells, clipped to the 35x19 board block; snapshots at 64/224/384 ms grow strictly.
+- M3: the plasma is a full-frame Rgb background and cards no longer paint an opaque background, so it stays dim behind the tiles.
+- M3: `--demo` and `--demo-merge` both build `demo_merge_app(frame)` for render-once and start live demo play from the same pinned state.
+- M3: the pinned move is seed 42 + Up; the fifth/sixth game RNG draws spawn 2 at cell 9, as reviewed.
+- M3 fix: the outer frame block no longer paints `BACKGROUND` over the whole frame, so the plasma Rgb background survives to the final buffer (F1).
+- M3 fix: `plasma_background_reaches_the_frame_buffer` asserts >=2 Rgb backgrounds in blank row 2 and a background change at (2,2); it failed before the F1 fix.
 
 ## Known issues
 - The agent shell is headless (no tty); live rendering and truecolour are deferred to M4 (Q1).
 - The `script` pty reports 0x0, so `--self-test-tui` proves the lifecycle but paints no visible cells in this environment.
-- Live animation uses a fixed `1/fps` step; measured, clamped `dt` is M3 work (Q8).
-- `--frame` is parsed but has no visible effect until M3 effects exist.
+- The live measured-`dt` loop compiles and is wired but was not exercised under a real tty here; the deterministic frame tests carry the animation proof.
+- M3 effect snapshots are plain-text symbol captures; the 24-bit colour, the plasma shimmer and final visual acceptance remain the human/M4 check.
+- M4 must confirm the fixed plasma actually shimmers behind the board in a truecolour terminal (N5).

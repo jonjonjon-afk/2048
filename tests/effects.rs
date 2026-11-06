@@ -201,11 +201,42 @@ fn plasma_phase_advances_with_dt() {
     app.update(None, Duration::from_millis(100));
     let after = frame_buffer(&app, 100, 36);
 
-    let changed = (0..36).any(|y| {
-        (0..100)
-            .any(|x| before[(x, y)].fg != after[(x, y)].fg || before[(x, y)].bg != after[(x, y)].bg)
-    });
-    assert!(changed, "plasma must change between 0 ms and 100 ms");
+    assert_ne!(
+        before[(2, 2)].bg,
+        after[(2, 2)].bg,
+        "plasma background at the non-UI cell 2,2 must change between 0 ms and 100 ms"
+    );
+}
+
+#[test]
+fn plasma_background_reaches_the_frame_buffer() {
+    let before = frame_buffer(&App::new(Game::new(42, 0)), 100, 36);
+    let mut app = App::new(Game::new(42, 0));
+    app.update(None, Duration::from_millis(100));
+    let after = frame_buffer(&app, 100, 36);
+
+    let mut backgrounds = Vec::new();
+    for x in 1..99 {
+        let background = before[(x, 2)].bg;
+        assert!(
+            matches!(background, Color::Rgb(..)),
+            "blank-row background at {x},2 is {background:?}"
+        );
+        if !backgrounds.contains(&background) {
+            backgrounds.push(background);
+        }
+    }
+
+    assert!(
+        backgrounds.len() >= 2,
+        "blank row 2 has only {} distinct Rgb backgrounds; the plasma did not reach the buffer",
+        backgrounds.len()
+    );
+    assert_ne!(
+        before[(2, 2)].bg,
+        after[(2, 2)].bg,
+        "the sampled background must shimmer between 0 ms and 100 ms"
+    );
 }
 
 #[test]

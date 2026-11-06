@@ -77,9 +77,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         return;
     }
 
-    let outer = Block::new()
-        .borders(Borders::ALL)
-        .style(Style::new().bg(BACKGROUND));
+    let outer = Block::new().borders(Borders::ALL);
     frame.render_widget(outer, area);
 
     render_header(frame, area, app);
@@ -180,8 +178,7 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
         let card = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(border)
-            .style(Style::new().bg(BACKGROUND));
+            .border_style(border);
         frame.render_widget(card, origin);
     }
 }
