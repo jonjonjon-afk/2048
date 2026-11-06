@@ -8,9 +8,11 @@ The game is specified in [`docs/SPEC.md`](docs/SPEC.md) and built with the
 reviewer/coder workflow described in [`AGENTS.md`](AGENTS.md).
 
 ## Status
-Intake is complete. Implementation runs through the milestones in
-`docs/SPEC.md` section 8 (M0 recon, M1 core, M2 TUI, M3 effects, M4 handover).
-`make run` becomes available at M1/M2.
+- **M0 recon and plan:** approved.
+- **M1 headless core + storage:** approved — exact rules, deterministic RNG, atomic high score, CLI dump; 34 tests green.
+- **Next:** M2 TUI shell and controls (layout, keys, overlays, terminal restore, snapshots). `make run` is still a usage stub until M2.
+
+`make check` works today. `make demo` and the full `make e2e` become real in M2/M3.
 
 ## Controls
 | Key | Action |

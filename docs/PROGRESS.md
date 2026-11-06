@@ -3,16 +3,16 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M1 (headless core and storage) — gate passed, awaiting review
+- Milestone: M1 (headless core and storage) — approved
 - Round: 1
 - Last gate result: PASSED (exit 0; docs/evidence/M1.md "gate (Q7 resolved)")
-- Next action: wait for the reviewer's verdict on M1; do not start M2
+- Next action: M2 not started; wait for the reviewer's M2 assignment
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
 |---|---|---|---|---|
 | M0 | Recon and plan | gate passed, approved with follow-ups | approved with follow-ups | docs/evidence/M0.md |
-| M1 | Headless core and storage | gate passed, awaiting review | - | docs/evidence/M1.md |
+| M1 | Headless core and storage | gate passed, approved | approved | docs/evidence/M1.md |
 | M2 | TUI shell and controls | not started | - | docs/evidence/M2.md |
 | M3 | Shader-style effects | not started | - | docs/evidence/M3.md |
 | M4 | Polish and handover | not started | - | docs/evidence/M4.md |
