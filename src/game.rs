@@ -508,10 +508,18 @@ mod tests {
 
         assert!(game.game_over);
         let before = game.board;
-        let outcome = game.apply_move(Direction::Left);
-        assert!(!outcome.moved);
-        assert!(outcome.spawned.is_none());
-        assert_eq!(game.board, before);
+        for direction in [
+            Direction::Left,
+            Direction::Right,
+            Direction::Up,
+            Direction::Down,
+        ] {
+            let outcome = game.apply_move(direction);
+            assert!(!outcome.moved);
+            assert!(outcome.spawned.is_none());
+            assert_eq!(game.board, before);
+            assert!(game.game_over);
+        }
     }
 
     #[test]
