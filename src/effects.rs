@@ -16,6 +16,11 @@ pub const RIPPLE_MILLIS: u64 = 900;
 pub const RIPPLE_CELLS_PER_MILLI: f64 = 0.04;
 /// Half-width of the ripple front, in cells (SPEC 5.4 `±0.75`).
 pub const RIPPLE_FRONT_WINDOW: f64 = 0.75;
+/// Visual height of one play-area row in column widths (SPEC 5.4 row aspect 2).
+///
+/// A terminal cell is roughly twice as tall as it is wide, so the ripple's
+/// vertical distance is multiplied by this value to keep the crest round.
+pub const RIPPLE_ROW_ASPECT: f64 = 2.0;
 /// Amplitude factor applied for each play-area wall an image is mirrored across.
 pub const RIPPLE_WALL_FACTOR: f64 = 0.55;
 /// Ripple glyphs, strongest first, with the minimum amplitude for each.
@@ -115,8 +120,10 @@ impl Ripple {
 
     /// The strongest amplitude this wave reaches at play-area cell `(x, y)`.
     ///
-    /// A cell is on the front for an image when its Chebyshev distance to that
-    /// image is within [`RIPPLE_FRONT_WINDOW`] of the radius.
+    /// A cell is on the front for an image when its aspect-corrected Euclidean
+    /// distance to that image is within [`RIPPLE_FRONT_WINDOW`] of the radius.
+    /// One row is [`RIPPLE_ROW_ASPECT`] columns of visual length, so the crest
+    /// reads round on a 1:2 terminal cell instead of square.
     pub fn amplitude_at(&self, x: i32, y: i32) -> f64 {
         let radius = self.radius();
         let base = self.amplitude();
@@ -126,7 +133,9 @@ impl Ripple {
         self.images()
             .iter()
             .filter_map(|(image_x, image_y, walls)| {
-                let distance = (x - image_x).abs().max((y - image_y).abs());
+                let dx = x - image_x;
+                let dy = (y - image_y) * RIPPLE_ROW_ASPECT;
+                let distance = (dx * dx + dy * dy).sqrt();
                 if (distance - radius).abs() <= RIPPLE_FRONT_WINDOW {
                     Some(base * wall_factor(*walls))
                 } else {

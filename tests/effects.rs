@@ -9,8 +9,8 @@ use std::time::Duration;
 use game2048::demo::demo_merge_app;
 use game2048::effects::{
     Effects, BEST_PULSE_MILLIS, CELL_CENTRE_X, CELL_CENTRE_Y, CELL_PITCH_X, CELL_PITCH_Y,
-    FLASH_MILLIS, POP_MILLIS, RIPPLE_FRONT_WINDOW, RIPPLE_SYMBOLS, RIPPLE_WALL_FACTOR,
-    SPARKS_PER_MERGE, SPARK_MILLIS, SPARK_SYMBOLS,
+    FLASH_MILLIS, POP_MILLIS, RIPPLE_FRONT_WINDOW, RIPPLE_ROW_ASPECT, RIPPLE_SYMBOLS,
+    RIPPLE_WALL_FACTOR, SPARKS_PER_MERGE, SPARK_MILLIS, SPARK_SYMBOLS,
 };
 use game2048::game::{Board, Direction, Game, Merge};
 use game2048::render::{
@@ -293,11 +293,20 @@ fn ripple_radius_matches_the_spec_at_every_pin() {
 }
 
 #[test]
-fn ripple_front_at_100ms_matches_the_hand_table() {
+fn ripple_front_at_100ms_matches_the_round_hand_table() {
     let buffer = frame_buffer(&app_at(100), WIDTH, HEIGHT);
 
     assert_eq!(play_cell(&buffer, 0, 2), '▓', "(0,2) is the direct front");
     assert_eq!(play_cell(&buffer, 9, 2), '▓', "(9,2) is the direct front");
+    assert_eq!(play_cell(&buffer, 7, 1), '▓', "(7,1) is on the round front");
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 0, 4)),
+        "(0,4) is off the round front (a square would light it)"
+    );
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 4, 2)),
+        "(4,2) is inside the ring, not on it"
+    );
     assert!(
         !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 5, 5)),
         "(5,5) is inside the ring, not on it"
@@ -310,8 +319,61 @@ fn ripple_front_at_100ms_matches_the_hand_table() {
     // The front is a ring: the centre cell is not painted by the wave alone.
     let app = app_at(100);
     let ripple = app.effects.ripples()[0];
+    assert!(ripple.glyph_at(7, 1).is_some());
+    assert!(ripple.glyph_at(0, 4).is_none());
     assert!(ripple.glyph_at(0, 2).is_some());
     assert!(ripple.glyph_at(5, 5).is_none());
+}
+
+#[test]
+fn ripple_is_round_not_square() {
+    assert_eq!(RIPPLE_ROW_ASPECT, 2.0, "one row is two columns of length");
+
+    // 100 ms: (7,1) d=3.905 is on the round front while (0,4) d=5.408 is off.
+    // A Chebyshev front would light (0,4) at 4.5 and miss (7,1) at 2.5.
+    let at_100 = app_at(100);
+    let ripple = at_100.effects.ripples()[0];
+    assert_eq!(ripple.glyph_at(7, 1), Some('▓'), "100 ms (7,1)");
+    assert_eq!(ripple.glyph_at(0, 4), None, "100 ms (0,4)");
+    let buffer = frame_buffer(&at_100, WIDTH, HEIGHT);
+    assert_eq!(play_cell(&buffer, 7, 1), '▓', "100 ms (7,1) in the frame");
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 0, 4)),
+        "100 ms (0,4) is blank in the frame"
+    );
+
+    // 150 ms: the direct front reaches (0,0) at d=6.727.
+    let at_150 = app_at(150);
+    assert_eq!(
+        at_150.effects.ripples()[0].glyph_at(0, 0),
+        Some('▓'),
+        "150 ms (0,0)"
+    );
+    assert_eq!(
+        play_cell(&frame_buffer(&at_150, WIDTH, HEIGHT), 0, 0),
+        '▓',
+        "150 ms (0,0) in the frame"
+    );
+
+    // 224 ms: (13,2) d=8.559 is on the crest; the old square pin (13,10) d=17.24
+    // is now far off the radius 8.96.
+    let at_224 = app_at(224);
+    assert_eq!(
+        at_224.effects.ripples()[0].glyph_at(13, 2),
+        Some('▓'),
+        "224 ms (13,2)"
+    );
+    assert_eq!(
+        at_224.effects.ripples()[0].glyph_at(13, 10),
+        None,
+        "224 ms (13,10)"
+    );
+    let buffer = frame_buffer(&at_224, WIDTH, HEIGHT);
+    assert_eq!(play_cell(&buffer, 13, 2), '▓', "224 ms (13,2) in the frame");
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 13, 10)),
+        "224 ms (13,10) is blank in the frame"
+    );
 }
 
 #[test]
@@ -325,15 +387,18 @@ fn ripple_reflects_off_the_left_wall() {
     );
 
     let at_224 = frame_buffer(&app_at(224), WIDTH, HEIGHT);
-    assert_eq!(play_cell(&at_224, 13, 10), '▓', "(13,10) direct at 224 ms");
+    assert_eq!(play_cell(&at_224, 13, 2), '▓', "(13,2) direct at 224 ms");
+    // R3 pins the reflected crest at (3,2); at 224 ms a spark's glyph is drawn
+    // over that cell, so this buffer pin cannot pass without changing sparks or
+    // the renderer. See docs/OPEN_QUESTIONS.md Q14.
     assert_eq!(
-        play_cell(&at_224, 3, 10),
+        play_cell(&at_224, 3, 2),
         '▒',
-        "(3,10) is the left-wall image at 224 ms"
+        "(3,2) is the left-wall image at 224 ms"
     );
     assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&at_224, 9, 10)),
-        "(9,10) sits in the gap between the direct and reflected crests"
+        !RIPPLE_SYMBOLS.contains(&play_cell(&at_224, 9, 2)),
+        "(9,2) sits in the gap between the direct and reflected crests"
     );
 }
 
@@ -468,11 +533,7 @@ fn tile_digits_stay_on_top_of_the_ripple() {
 
     // Frame 14: the ripple is still drawn over the cards where no label sits.
     let buffer = frame_buffer(&demo_merge_app(14), WIDTH, HEIGHT);
-    assert_eq!(
-        play_cell(&buffer, 13, 10),
-        '▓',
-        "frame 14 ripple at (13,10)"
-    );
+    assert_eq!(play_cell(&buffer, 13, 2), '▓', "frame 14 ripple at (13,2)");
     let ripple = demo_merge_app(14).effects.ripples()[0];
     assert_eq!(
         ripple.glyph_at(4, 2),
@@ -492,10 +553,12 @@ fn ripple_colour_fades_with_age() {
 
     // SPEC 5.4 Brightness: fg = bg + (colour - bg) * amplitude, rounded, with
     // bg = Rgb(6, 8, 20) and the value-4 colour Rgb(0, 200, 255).
-    let direct_224 = colour_at(224, 13, 10);
+    let direct_224 = colour_at(224, 13, 2);
     assert_eq!(direct_224, Color::Rgb(1, 152, 197), "224 ms direct crest");
+    // (3,2) is the label row of the value-4 card, so the label layer replaces
+    // the ripple foreground (Q13); the R4 literal cannot be read there. Q14.
     assert_eq!(
-        colour_at(224, 3, 10),
+        colour_at(224, 3, 2),
         Color::Rgb(4, 87, 117),
         "224 ms left-wall crest"
     );
@@ -510,7 +573,7 @@ fn ripple_colour_fades_with_age() {
         "700 ms direct crest"
     );
 
-    let reflected_224 = color_luma(colour_at(224, 3, 10));
+    let reflected_224 = color_luma(colour_at(224, 3, 2));
     assert!(
         color_luma(direct_224) > reflected_224,
         "the 224 ms direct crest must be brighter than the reflected crest"
