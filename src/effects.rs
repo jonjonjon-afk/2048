@@ -128,7 +128,7 @@ impl Ripple {
             .filter_map(|(image_x, image_y, walls)| {
                 let distance = (x - image_x).abs().max((y - image_y).abs());
                 if (distance - radius).abs() <= RIPPLE_FRONT_WINDOW {
-                    Some(base * RIPPLE_WALL_FACTOR.powi(*walls as i32))
+                    Some(base * wall_factor(*walls))
                 } else {
                     None
                 }
@@ -143,6 +143,18 @@ impl Ripple {
             .iter()
             .find(|(_, minimum)| amplitude >= *minimum)
             .map(|(glyph, _)| *glyph)
+    }
+}
+
+/// `0.55` multiplied once per wall crossed (0, 1 or 2 walls for the nine images).
+///
+/// The factor is multiplied explicitly instead of using `f64::powi`, whose
+/// documented precision is unspecified across platforms and versions.
+fn wall_factor(walls: u32) -> f64 {
+    match walls {
+        0 => 1.0,
+        1 => RIPPLE_WALL_FACTOR,
+        _ => RIPPLE_WALL_FACTOR * RIPPLE_WALL_FACTOR,
     }
 }
 
