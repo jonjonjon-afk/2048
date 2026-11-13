@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M4 (polish and handover) — M4 gate passed, awaiting reviewer verdict
+- Milestone: M4 (polish and handover) — approved with follow-ups; U1/U2 done, awaiting reviewer confirmation
 - Last gate result: gate exit 0 (docs/evidence/M4.md "M4 gate final round 2", run at 641a5b1 after the F2 revert)
-- Next action: stop at the gate; the human still owes the live-terminal checks
+- Next action: stop; the human still owes the live-terminal checks
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
