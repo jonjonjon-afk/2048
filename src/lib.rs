@@ -5,6 +5,7 @@
 //! tests can render exact frames without waiting.
 
 pub mod action;
+pub mod anim;
 pub mod cli;
 pub mod demo;
 pub mod effects;
