@@ -4,7 +4,7 @@
 
 ## Current state
 - Milestone: M5 (prettier board and real 60 FPS) — gate passed, awaiting verdict (round 2: docs-only fixes F1-F4)
-- Last gate result: gate exit 0 (docs/evidence/M5.md "M5 gate", run at HEAD 6b33091 after the round-1 code work); the round-2 rerun is recorded as "M5 gate final"
+- Last gate result: gate exit 0 (docs/evidence/M5.md "M5 gate final", run at 0a59767 after the state files were committed; the round-1 "M5 gate" block is kept as history)
 - Next action: stop; the human still owes the live kitty check (digit centring, play-area frame, smoothness)
 
 ## Milestones
