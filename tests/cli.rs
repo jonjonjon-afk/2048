@@ -40,6 +40,34 @@ fn dump_seed_42_matches_the_spec_block() {
 }
 
 #[test]
+fn dump_prints_the_real_score() {
+    let output = run(&["--dump", "--seed", "42", "--moves", "lrud"]);
+
+    assert!(output.status.success(), "dump must exit 0");
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    assert!(
+        stdout.contains("score: 4\n"),
+        "dump must print the real score, never the counted one: {stdout}"
+    );
+
+    // The panel at the same moment counts from 0, so it shows less than the
+    // dump. That is exactly why the dump stays on `game.score`.
+    let frame = run(&[
+        "--render-once",
+        "--demo-merge",
+        "--frame",
+        "0",
+        "--no-persist",
+    ]);
+    assert!(frame.status.success());
+    let rendered = String::from_utf8(frame.stdout).expect("stdout is UTF-8");
+    assert!(
+        rendered.contains("SCORE 0"),
+        "frame 0 of the demo merge shows the counted score 0"
+    );
+}
+
+#[test]
 fn help_exits_zero() {
     let output = run(&["--help"]);
 

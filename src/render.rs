@@ -173,7 +173,7 @@ fn render_panel(frame: &mut Frame, area: Rect, app: &App) {
         .border_style(border);
     frame.render_widget(block, panel);
 
-    let score = format!("SCORE {}", app.game.score);
+    let score = format!("SCORE {}", app.shown_score());
     let best = format!("BEST {}", app.game.best);
     let text = format!("{score}   {best}");
     let edge = Rect::new(layout.left + 2, layout.top, text.chars().count() as u16, 1);
@@ -347,7 +347,7 @@ fn render_overlay(frame: &mut Frame, area: Rect, app: &App) {
             area,
             vec![
                 Line::from("GAME OVER"),
-                Line::from(format!("Score {}", app.game.score)),
+                Line::from(format!("Score {}", app.shown_score())),
                 Line::from("R restart    Q quit"),
             ],
             WARNING,

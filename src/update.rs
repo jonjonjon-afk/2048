@@ -9,6 +9,7 @@ use core::time::Duration;
 use crate::action::Action;
 use crate::effects::Effects;
 use crate::game::Game;
+use crate::score::ScoreCount;
 
 /// How long a failed save keeps its footer warning, in milliseconds.
 pub const WARNING_MILLIS: u64 = 3_000;
@@ -27,6 +28,8 @@ pub struct App {
     pub quit: bool,
     /// Effect timeline, advanced only by the injected `dt`.
     pub effects: Effects,
+    /// Displayed score that chases `game.score`; display state only.
+    shown: ScoreCount,
     warning: Option<Duration>,
 }
 
@@ -34,6 +37,7 @@ impl App {
     /// Wrap a game in application state.
     pub fn new(game: Game) -> Self {
         Self {
+            shown: ScoreCount::new(game.score),
             game,
             quit: false,
             effects: Effects::new(),
@@ -62,6 +66,7 @@ impl App {
             Some(Action::Restart) => {
                 self.game.restart();
                 self.effects.clear();
+                self.shown.reset(0);
             }
             Some(Action::Quit) => {
                 self.quit = true;
@@ -77,8 +82,22 @@ impl App {
             effects.push(Effect::SaveBest(self.game.best));
         }
 
+        // The action may have raised the real score; aim the shown value at it
+        // before this update's `dt` advances the count.
+        if self.game.score != self.shown.target() {
+            self.shown.retarget(self.game.score);
+        }
+
         self.advance(dt);
         effects
+    }
+
+    /// The score to display: the real score once the count has caught up.
+    ///
+    /// Every user-visible score text (panel edge, game-over overlay) reads
+    /// through this one accessor.
+    pub fn shown_score(&self) -> u64 {
+        self.shown.shown()
     }
 
     /// Record that the store rejected a save and start the footer warning.
@@ -91,9 +110,10 @@ impl App {
         self.warning.is_some_and(|remaining| !remaining.is_zero())
     }
 
-    /// Advance the effect clock and the warning timer by `dt`.
+    /// Advance the effect clock, the score count and the warning timer by `dt`.
     fn advance(&mut self, dt: Duration) {
         self.effects.advance(dt);
+        self.shown.advance(dt);
 
         let Some(remaining) = self.warning else {
             return;
