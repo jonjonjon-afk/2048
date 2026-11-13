@@ -723,8 +723,8 @@ fn ripple_colour_fades_with_age() {
     );
 
     // A two-colour cell: top = the 150 ms left-wall image (0.458333), bottom
-    // = the direct image (0.833333). See the deviation note: R3's literals for
-    // this cell are arithmetically impossible at 150 ms (Q16).
+    // = the direct image (0.833333); these are the reviewer's round-2
+    // corrected literals (Q16).
     assert_eq!(
         style_at(150, 0, 4),
         (Color::Rgb(3, 96, 128), Color::Rgb(1, 168, 216)),

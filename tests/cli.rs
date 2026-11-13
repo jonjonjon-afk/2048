@@ -205,8 +205,8 @@ fn render_once_demo_merge_frame14_contains_ripple_and_spark() {
 
     assert!(output.status.success(), "--demo-merge must exit 0");
     let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-    assert!(stdout.contains('▓'), "frame 14 is missing the ▓ ripple");
-    assert!(stdout.contains('▒'), "frame 14 is missing the ▒ ripple");
+    assert!(stdout.contains('▀'), "frame 14 is missing the ▀ ripple");
+    assert!(stdout.contains('▄'), "frame 14 is missing the ▄ ripple");
     assert!(stdout.contains('✦'), "frame 14 is missing the ✦ spark");
 }
 
