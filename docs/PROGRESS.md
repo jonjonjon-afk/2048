@@ -20,15 +20,13 @@
 | M7 | Merge ripple | gate passed | awaiting verdict (round 1) | docs/evidence/M7.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- M7 round 1, R1/R7: replace `Shockwave` with `Ripple` in `src/effects.rs` (float radius, 9 images, ±0.75, 0.55^walls) and delete the old ring code.
-- M7 R4: one ripple per merge keeps its own cell/value; sparks/flash/pop/pulse lifetimes untouched.
-- M7 R2/R3: draw the ripple after cards, before labels; amplitudes via `glyph_at`; expire at 900 ms.
-- M7 R1/R2/R3 pins: integration tests read play-area cells at `panel.left+1+x`, `panel.top+1+y`.
-- M7 R5: frame 1/2 keep the `4` digit at board cell (4,2); frame 14 shows the ripple at (13,10).
-- M7 R6: regenerate the three effect fixtures and the demo-merge capture from the binary; keep frame 14 ▓/▒.
-- M7 R7: no `game.score` in render, protected diff empty, no deps, no `Shockwave`/`RING_SYMBOLS` remnants.
-- M7 R8: `scripts/ev.sh` evidence, EVIDENCE A10 row, api-notes FU1 rows, PROGRESS without an approval claim.
-- Done this round: all eight requirements; gate exit 0 ("M7 gate final"); stop and wait for the audit.
+- M7 round 2, F1: SPEC §5.4 Brightness — mix the glyph fg from the renderer background by the cell amplitude, `f64::round` per channel.
+- F1: expose `Ripple::front_at(x, y) -> (glyph, amplitude)` so the renderer dims with exactly the amplitude that chose the glyph.
+- F1: replace `ripple_colour_comes_from_the_merged_value` with `ripple_colour_fades_with_age` (four `assert_eq!` literals + direct brighter than reflected).
+- F2: glyph cells untouched; assert the three effect fixtures and the e2e capture are a 0-line diff; `make check` stays 125 tests.
+- F3: ev.sh blocks for the colour test, `make check`, the gate and fixture numstat 0; A10 mentions the fade; api-notes row for `f64::round`.
+- F3: SPEC and the review committed unchanged; protected diff and Cargo 0 bytes.
+- Done this round: F1-F3; gate exit 0; stop and wait for the audit.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
