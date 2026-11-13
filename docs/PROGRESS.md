@@ -1,7 +1,12 @@
 # PROGRESS
 
-> Owned by the coder. Compact state after M14 round 1; the entry point is
+> Owned by the coder. Compact state after M14 close-out; the entry point is
 > `docs/HANDOVER.md`.
+
+## M14 close-out plan (approved, no code)
+1. Set the M14 row to `approved` with the final commit; drop the round-1 gate wording.
+2. Commit the reviewer's `docs/reviews/M14.md` byte-for-byte with this file.
+3. Nothing else: no src/tests/fixtures/evidence/spec edits, no gate re-run.
 
 ## M14 plan (round 1)
 1. Commit the reviewer's SPEC/M14 docs (and the dirty M13 approval) as-is.
@@ -20,7 +25,8 @@
 5. Result: **exit 0**, **181 tests, 0 failed**; the block is committed.
 
 ## Current state
-- M0-M13 are approved; M14 (jiggle along the merge axis) is at its round-1 gate.
+- M0-M14 are approved; M14 (jiggle along the merge axis) closed at commit
+  `da033c1` (the reviewer's own run at that commit: 185/0).
 - `make check`: **185 tests, 0 failed** (121 lib + 15 CLI + 41 effects + 1
   restart + 7 score). `make e2e` is clean against the four slide and six older
   fixtures.
@@ -32,7 +38,8 @@
   `docs/evidence/M13.md` "M13 gate".
 - M12 gate: **exit 0** at commit `bdd89a2` round 2 (147/0). Proof:
   `docs/evidence/M12.md` "M12 round 2 gate".
-- No next action: stop at the M14 gate and await the reviewer's verdict.
+- No next action: M14 is approved and closed; the next milestone is the
+  reviewer's call.
 
 ## Milestones
 | ID | Title | Verdict | Final commit | History |
@@ -50,7 +57,7 @@
 | M10 | Round merge ripple | approved (round 2) | `6adddbe` | docs/HISTORY.md |
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
 | M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | docs/evidence/M13.md |
-| M14 | Jiggle along the merge axis | awaiting round-1 review | `0bd8448` | docs/evidence/M14.md |
+| M14 | Jiggle along the merge axis | approved | `da033c1` | docs/evidence/M14.md |
 
 ## M12 checklist
 | ID | State |
