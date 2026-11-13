@@ -474,8 +474,7 @@ fn best_pulse_lasts_600ms() {
         let mut app = demo_merge_app(0);
         app.update(None, Duration::from_millis(millis));
         let buffer = frame_buffer(&app, 100, 36);
-        let position =
-            find_token(&buffer, row, "BEST").expect("the play-area top edge shows BEST");
+        let position = find_token(&buffer, row, "BEST").expect("the play-area top edge shows BEST");
 
         assert_ne!(
             cell_style(&buffer, position.0, position.1),

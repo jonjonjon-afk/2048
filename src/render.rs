@@ -151,8 +151,7 @@ fn render_too_small(frame: &mut Frame, area: Rect) {
 fn render_header(frame: &mut Frame, area: Rect) {
     let left = "┌ 2048 ";
     let right = "┐";
-    let fill = (area.width as usize)
-        .saturating_sub(left.chars().count() + right.chars().count());
+    let fill = (area.width as usize).saturating_sub(left.chars().count() + right.chars().count());
     let line = format!("{left}{}{right}", "─".repeat(fill));
 
     let paragraph = Paragraph::new(line).style(header_style());
@@ -178,9 +177,7 @@ fn render_panel(frame: &mut Frame, area: Rect, app: &App) {
     let best = format!("BEST {}", app.game.best);
     let text = format!("{score}   {best}");
     let edge = Rect::new(layout.left + 2, layout.top, text.chars().count() as u16, 1);
-    frame
-        .buffer_mut()
-        .set_style(edge, header_style());
+    frame.buffer_mut().set_style(edge, header_style());
     for (offset, character) in text.chars().enumerate() {
         let x = layout.left + 2 + offset as u16;
         if let Some(cell) = frame.buffer_mut().cell_mut((x, layout.top)) {
@@ -237,12 +234,7 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
             continue;
         }
         let origin = cell_origin(layout, cell);
-        let inner = Rect::new(
-            origin.x + 1,
-            origin.y + CARD_HEIGHT / 2,
-            LABEL_WIDTH,
-            1,
-        );
+        let inner = Rect::new(origin.x + 1, origin.y + CARD_HEIGHT / 2, LABEL_WIDTH, 1);
         let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
         let style = if bright {
             bright_tile_style(value)
@@ -581,12 +573,26 @@ mod tests {
             for (value, padding) in cases {
                 let mut board = Board::empty();
                 board.set_cell(0, value);
-                let grid = lines(&frame_text(&App::new(Game::from_state(board, 0, 0, 42)), width, height));
+                let grid = lines(&frame_text(
+                    &App::new(Game::from_state(board, 0, 0, 42)),
+                    width,
+                    height,
+                ));
 
                 let mut digits = Vec::new();
-                for y in card_top..card_top + CARD_HEIGHT as usize {
-                    for x in card_left..card_left + CARD_WIDTH as usize {
-                        if grid[y][x].is_ascii_digit() {
+                for (y, row) in grid
+                    .iter()
+                    .enumerate()
+                    .skip(card_top)
+                    .take(CARD_HEIGHT as usize)
+                {
+                    for (x, character) in row
+                        .iter()
+                        .enumerate()
+                        .skip(card_left)
+                        .take(CARD_WIDTH as usize)
+                    {
+                        if character.is_ascii_digit() {
                             digits.push((x, y));
                         }
                     }
@@ -619,7 +625,10 @@ mod tests {
             assert_eq!(grid[top + 24][left], '╰');
             assert_eq!(grid[top + 24][left + 40], '╯');
             assert_eq!(
-                grid[top].iter().filter(|character| **character == '╭').count(),
+                grid[top]
+                    .iter()
+                    .filter(|character| **character == '╭')
+                    .count(),
                 1,
                 "{width}x{height} top edge has a second ╭"
             );
@@ -662,9 +671,18 @@ mod tests {
         let text = frame_text(&App::new(game), 100, 36);
         let header = text.lines().next().unwrap_or_default();
 
-        assert!(header.contains("2048"), "header must keep the title: {header}");
-        assert!(!header.contains("SCORE"), "header must not show SCORE: {header}");
-        assert!(!header.contains("BEST"), "header must not show BEST: {header}");
+        assert!(
+            header.contains("2048"),
+            "header must keep the title: {header}"
+        );
+        assert!(
+            !header.contains("SCORE"),
+            "header must not show SCORE: {header}"
+        );
+        assert!(
+            !header.contains("BEST"),
+            "header must not show BEST: {header}"
+        );
         assert!(header.trim_end().ends_with('┐'));
     }
 
