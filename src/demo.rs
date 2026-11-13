@@ -34,6 +34,17 @@ pub fn demo_merge_app(frame: u64) -> App {
     app
 }
 
+/// The animated live demo used by `make demo` and the `--demo`/`--demo-merge` TUI.
+///
+/// Same seed and merge move as [`demo_merge_app`], but slides stay enabled, so
+/// the live game shows the 140 ms glide and the 240 ms merge jiggle. Only the
+/// pinned `--render-once` captures keep the slide-less app.
+pub fn demo_live_app() -> App {
+    let mut app = App::new(Game::new(DEMO_SEED, 0));
+    app.update(Some(Action::Move(Direction::Up)), Duration::ZERO);
+    app
+}
+
 /// The `--demo-slide` app advanced to animation frame `frame`.
 ///
 /// The synthetic board gets one `Down` move at t = 0 with the normal demo seed
@@ -104,6 +115,21 @@ mod tests {
         // cell with its own value.
         let spawn = at_three.game.last_spawn.expect("the demo move spawns");
         assert_eq!(settled.cell(spawn.cell), spawn.value);
+    }
+
+    #[test]
+    fn the_live_demo_app_animates_from_frame_zero() {
+        let live = demo_live_app();
+        assert!(live.sliding(), "the live demo starts its slide");
+        assert_eq!(
+            live.slide().map(|slide| slide.age),
+            Some(Duration::ZERO),
+            "the live demo slide starts at age 0"
+        );
+        assert!(
+            !demo_merge_app(0).sliding(),
+            "the pinned --render-once capture stays slide-less"
+        );
     }
 
     #[test]

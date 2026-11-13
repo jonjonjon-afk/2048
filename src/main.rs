@@ -5,7 +5,7 @@
 //! dump, render-once, self-test, demo and no-persist stay in memory.
 
 use game2048::cli::{headless_dump, parse, resolved_seed, USAGE};
-use game2048::demo::{demo_merge_app, demo_slide_app};
+use game2048::demo::{demo_live_app, demo_merge_app, demo_slide_app};
 use game2048::game::Game;
 use game2048::highscore::{FileStore, MemoryStore};
 use game2048::render::frame_text;
@@ -67,7 +67,7 @@ fn main() {
         if args.demo_slide {
             shell::run_live_app(demo_slide_app(0), store, args.fps)
         } else if args.demo || args.demo_merge {
-            shell::run_live_app(demo_merge_app(0), store, args.fps)
+            shell::run_live_app(demo_live_app(), store, args.fps)
         } else {
             shell::run_live(store, seed, args.fps)
         }

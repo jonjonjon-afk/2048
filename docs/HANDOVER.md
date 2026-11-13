@@ -19,7 +19,7 @@
 ## Build, run, test
 ```sh
 make run      # the real game (release build)
-make demo     # seeded 42 demo board and effects, in-memory table
+make demo     # seeded 42 demo board with the animated slide + jiggle, in-memory table
 make check    # cargo fmt --check, clippy -D warnings, all tests
 make e2e      # all integration suites + deterministic captures in docs/evidence/e2e/
 ```
@@ -35,7 +35,10 @@ script -qec "./target/debug/game2048 --self-test-tui --seed 42 --no-persist --fp
 `--self-test-tui` opens the real terminal, draws 120 frames at the live pacing,
 restores the terminal, prints `self-test-tui: 120 frames in <secs>s (<fps> fps)`
 and exits 0. `--demo`, `--demo-merge` and `--no-persist` always use an in-memory
-store and never touch real data.
+store and never touch real data. The live `--demo` and `--demo-merge` modes
+animate the M13 slide and jiggle; `--render-once --demo-merge` keeps the
+slide-less app so the pre-M13 fixtures stay byte-identical, while
+`--render-once --demo-slide` captures the pinned motion frames.
 
 ## Controls
 | Key | Action |
