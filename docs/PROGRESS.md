@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M9 (handover refresh) — documentation complete, gate passed, awaiting the reviewer's verdict
-- Last gate result: M9 clean-clone gate exit 0 (docs/evidence/M9.md "M9 gate"); 145 tests, 0 failed
-- Next action: none; stop at the M9 gate and await the reviewer's verdict
+- Milestone: M10 (round merge ripple) — gate passed in round 2 (F1 pin correction), 146 tests, 0 failed
+- Last gate result: M10 gate exit 0 (docs/evidence/M10.md "R2 F2 M10 gate"); 99 lib + 12 CLI + 27 effects + 1 restart + 7 score = 146 tests, 0 failed
+- Next action: none; stop at the M10 gate and await the reviewer's verdict
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -20,13 +20,14 @@
 | M7 | Merge ripple | gate passed | approved (round 2, `e1a86c1`) | docs/evidence/M7.md |
 | M8 | Arcade high-score table | gate passed | approved (round 2, `ca53b8c`) | docs/evidence/M8.md |
 | M9 | Handover refresh | gate passed | awaiting the reviewer's verdict (round 1) | docs/evidence/M9.md |
+| M10 | Round merge ripple | gate passed (round 2) | awaiting the reviewer's verdict (round 2) | docs/evidence/M10.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- Commit the reviewer-owned M9 review and accepted M8/M7/SPEC files unchanged.
-- R1: rewrite README for the shipped game (ripple, controls, name entry, table storage).
-- R2: refresh A1/A2/A4 acceptance rows with the M5/M8/M7 proof pointers.
-- R3/R4/R5: sweep every evidence pointer, close OPEN_QUESTIONS, finalise PROGRESS.
-- R6/R7/R8: commit the docs, run the exact clean-clone gate through ev.sh, prove the doc-only diff, fill the M9 evidence.
+- F1: keep the effect-layer pin at `(3,2)` and move only the rendered reflected pin to `(2,5)` `▒`; colour pin `(2,5)` -> `Rgb(4,87,117)`.
+- F1: touch no code, no fixture and no other pin; run fmt/clippy and the effects target.
+- F2: run the exact gate and the full evidence set through ev.sh; expect 146 tests and exit 0.
+- F2: append round-2 evidence blocks, update the map/limitations/counts.
+- F3: commit the docs/evidence and `docs/reviews/M10.md` unchanged, answer Q14, leave `opencode.json` uncommitted.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
@@ -63,6 +64,8 @@
 - M7 round 2: `f64::round` is used per channel (round half away from zero), matching the four literals `Rgb(1,152,197)`, `Rgb(4,87,117)`, `Rgb(3,98,130)`, `Rgb(5,51,72)` in the review.
 - M7 round 2: the text fixtures and the e2e capture needed no regeneration (colour is not in the plain-text frame); they have a 0-line diff from `d6909ef`.
 - M8 round 2 (F1): only `ErrorKind::NotFound` may fall through to the legacy migration; any other table read error returns an empty table, so a directory at the table path does not promote a stale legacy score.
+- M10: `RIPPLE_ROW_ASPECT = 2.0` is a named `f64` constant and `amplitude_at` computes `sqrt(dx*dx + (aspect*dy)^2)`, because SPEC §5.4 replaces the Chebyshev square with the aspect-corrected circle.
+- M10 round 2 (F1): the rendered reflected crest is pinned at `(2,5)` (`▒`, `Rgb(4,87,117)`) while the effect layer keeps `front_at(3,2) = ('▒', 0.413111)`; `(3,2)` is the value-4 label row and a spark cell, so only the reviewer's pin changed, not the code.
 
 ## Known issues
 - The agent shell is headless (no tty); live truecolour and the plasma shimmer are still the human's visual check (Q1/N5).
@@ -73,4 +76,5 @@
 - M7: the ripple *feel* was not watched live by the coder; the pinned cells, the hand table and frame 14 are the proof, and the human's live wave/return/fade check is open.
 - M7 round 2: the linear fade is proven per-channel in the buffer, but how it feels over the 900 ms at 60 FPS is the human's live check; the text fixtures cannot show colour.
 - M7: the label layer paints its whole 7-cell row, so a ripple glyph on an occupied card's label row takes that tile's foreground colour; digits still win in their own cell and no pin sits on a label row.
+- M10: `(3,2)` is both the value-4 label row and a spark cell at 224 ms, so the rendered reflected crest is pinned at `(2,5)` (Q14); the effect layer keeps the exact `front_at(3,2)` value.
 - Human checks remaining before final acceptance: truecolour shimmer and effect frame 14, the M7 ripple reading as a returning wave, live cursor/screen restore, and BEST surviving a real restart via `make run`.
