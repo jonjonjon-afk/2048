@@ -235,8 +235,12 @@ impl FileStore {
 
 impl HighScoreStore for FileStore {
     fn load(&self) -> HighScores {
-        if let Ok(text) = fs::read_to_string(&self.path) {
-            return HighScores::parse(&text);
+        match fs::read_to_string(&self.path) {
+            Ok(text) => return HighScores::parse(&text),
+            // An unreadable table is an empty table (SPEC §5.3); only a
+            // missing one may fall through to the legacy migration.
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return HighScores::new(),
+            Err(_) => {}
         }
 
         // Migration only: the table is missing, so a positive legacy score
@@ -485,6 +489,20 @@ mod tests {
         let store = FileStore::new(dir.join(FILE_NAME));
 
         assert_eq!(rows(&store.load()), vec![pair("BOB", 100)]);
+    }
+
+    #[test]
+    fn unreadable_table_loads_empty_without_migrating() {
+        let dir = TempDir::new("unreadable-table");
+        // A directory at the table path makes read_to_string fail with
+        // EISDIR, which is not NotFound.
+        fs::create_dir(dir.join(FILE_NAME)).expect("create a directory at the table path");
+        fs::write(dir.join(LEGACY_FILE_NAME), "4096\n").expect("write the legacy score");
+        let store = FileStore::new(dir.join(FILE_NAME));
+
+        let table = store.load();
+        assert_eq!(table.len(), 0);
+        assert_eq!(table.best(), 0);
     }
 
     #[test]

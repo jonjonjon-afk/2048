@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M8 (arcade high-score table) — round 1 in progress
-- Last gate result: M7 gate exit 0 (docs/evidence/M7.md "M7 gate round 2"); 125 tests, 0 failed
-- Next action: implement R1-R8; commit the reviewer SPEC/reviews unchanged first; stop at the M8 gate
+- Milestone: M8 (arcade high-score table) — round 2 complete, gate passed, awaiting verdict
+- Last gate result: M8 gate exit 0 (docs/evidence/M8.md "M8 gate"); 145 tests, 0 failed
+- Next action: none; stop at the M8 gate and await the reviewer's verdict
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -17,16 +17,16 @@
 | M4 | Polish and handover | gate passed | approved with follow-ups | docs/evidence/M4.md |
 | M5 | Prettier board and real 60 FPS | gate passed | approved | docs/evidence/M5.md |
 | M6 | Score count-up | gate passed | approved with follow-ups | docs/evidence/M6.md |
-| M7 | Merge ripple | gate passed | awaiting verdict (round 2) | docs/evidence/M7.md |
+| M7 | Merge ripple | gate passed | approved (round 2, `e1a86c1`) | docs/evidence/M7.md |
+| M8 | Arcade high-score table | gate passed | awaiting verdict (round 2) | docs/evidence/M8.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- Commit docs/SPEC.md, docs/reviews/M7.md and docs/reviews/M8.md unchanged (reviewer-owned).
-- R1/R2: `HighScores` table, parser/writer, `.tmp` rename, legacy `highscore` migration, new trait.
-- R3/R4: entry state machine, entry key mapping, H table toggle and move blocking in `App`.
-- R5: 20x12 panel at >= 100 columns, 26x15 table overlay, 34x7 entry overlay + named render tests.
-- R6/R7: shell loads the table as best, saves once on Enter, warns on failure; named restart test.
-- R8: regenerate the 100x36 fixtures/e2e (12/12 panel lines), keep the 60x30 and dump fixtures.
-- Evidence via scripts/ev.sh for every cited command; EVIDENCE A3/A6/A11, PROGRESS, api-notes.
+- Commit the reviewer's round-2 review (`docs/reviews/M8.md`) unchanged.
+- F1: migrate the legacy file only on `ErrorKind::NotFound`; add `unreadable_table_loads_empty_without_migrating`.
+- F2: ev.sh blocks for R1-R8 named tests, per-target counts, fixture numstat, protected diff, block audit.
+- F3: run the exact gate through ev.sh, then `make e2e` a second time and prove the capture path clean.
+- F4: update EVIDENCE A3/A6/A11 and the M8 rows, PROGRESS, and the api-notes function pointers.
+- F5: commit the F1 change, its test, the evidence and the docs.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
@@ -62,6 +62,7 @@
 - M7 round 2: the brightness mix lives in the renderer (`dimmed_colour`), because the background is renderer-owned; the effect layer stays colour-free.
 - M7 round 2: `f64::round` is used per channel (round half away from zero), matching the four literals `Rgb(1,152,197)`, `Rgb(4,87,117)`, `Rgb(3,98,130)`, `Rgb(5,51,72)` in the review.
 - M7 round 2: the text fixtures and the e2e capture needed no regeneration (colour is not in the plain-text frame); they have a 0-line diff from `d6909ef`.
+- M8 round 2 (F1): only `ErrorKind::NotFound` may fall through to the legacy migration; any other table read error returns an empty table, so a directory at the table path does not promote a stale legacy score.
 
 ## Known issues
 - The agent shell is headless (no tty); live truecolour and the plasma shimmer are still the human's visual check (Q1/N5).
