@@ -42,7 +42,8 @@ fn main() {
         } else {
             App::new(Game::new(seed, 0))
         };
-        print!("{}", frame_text(&app, 100, 36));
+        let (width, height) = args.size.unwrap_or((100, 36));
+        print!("{}", frame_text(&app, width, height));
         return;
     }
 

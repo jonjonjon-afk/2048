@@ -145,6 +145,57 @@ fn render_once_prints_36_lines_of_100_columns_without_ansi() {
 }
 
 #[test]
+fn bad_size_exits_two_with_stderr() {
+    for value in [
+        "60", "60x", "x30", "abc", "0x0", "59x30", "60x29", "100X36", "60x30x1",
+    ] {
+        let output = run(&["--render-once", "--size", value, "--no-persist"]);
+        assert_eq!(output.status.code(), Some(2), "value {value}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+        assert!(
+            stderr.contains("invalid --size"),
+            "value {value} printed: {stderr}"
+        );
+    }
+
+    let output = run(&["--size", "60x30"]);
+    assert_eq!(output.status.code(), Some(2), "--size alone must exit 2");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(
+        stderr.contains("--size requires --render-once"),
+        "--size alone printed: {stderr}"
+    );
+}
+
+#[test]
+fn render_once_60x30_prints_30_lines_of_60_columns() {
+    let output = run(&[
+        "--render-once",
+        "--seed",
+        "42",
+        "--size",
+        "60x30",
+        "--no-persist",
+    ]);
+
+    assert!(output.status.success(), "--size 60x30 must exit 0");
+    assert!(
+        !output.stdout.contains(&0x1b),
+        "render-once must print no ANSI escapes"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 30, "exactly 30 lines");
+    assert!(
+        lines.iter().all(|line| line.chars().count() == 60),
+        "every line is exactly 60 characters"
+    );
+    for needle in ["2048", "SCORE 0", "BEST 0"] {
+        assert!(stdout.contains(needle), "frame is missing {needle}");
+    }
+}
+
+#[test]
 fn bad_fps_and_bad_frame_exit_two_with_stderr() {
     for arguments in [vec!["--fps", "0"], vec!["--fps", "x"], vec!["--frame", "x"]] {
         let output = run(&arguments);

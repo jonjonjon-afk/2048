@@ -12,6 +12,8 @@ use crate::highscore::{HighScoreStore, MemoryStore};
 pub const DEFAULT_FPS: u32 = 60;
 /// Seed used by the demo boards when `--seed` is absent.
 pub const DEMO_SEED: u64 = 42;
+/// Smallest frame the renderer supports, in columns x rows.
+pub const MIN_FRAME_SIZE: (u16, u16) = (60, 30);
 
 /// Usage text for `--help` and for a bare invocation.
 pub const USAGE: &str = "\
@@ -25,6 +27,7 @@ Options:
   --dump           print the board state and exit
   --render-once    print one 100x36 plain-text frame and exit
   --frame <n>      animation frame for --render-once (16 ms steps)
+  --size <WxH>     --render-once frame size, default 100x36, minimum 60x30
   --demo           seeded showcase board with an in-memory score
   --demo-merge     demo board with a merge ready for captures
   --demo-slide     synthetic board with one sliding Down move for captures
@@ -76,6 +79,7 @@ pub struct Args {
     pub demo_slide: bool,
     pub fps: u32,
     pub frame: Option<u64>,
+    pub size: Option<(u16, u16)>,
 }
 
 impl Default for Args {
@@ -93,6 +97,7 @@ impl Default for Args {
             demo_slide: false,
             fps: DEFAULT_FPS,
             frame: None,
+            size: None,
         }
     }
 }
@@ -161,6 +166,12 @@ where
                     CliError::new(format!("invalid --frame value '{value}': expected a u64"))
                 })?);
             }
+            "--size" => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| CliError::new("--size requires a WxH value such as 60x30"))?;
+                parsed.size = Some(parse_size(&value)?);
+            }
             "--help" | "-h" => parsed.help = true,
             other => {
                 return Err(CliError::new(format!(
@@ -170,7 +181,36 @@ where
         }
     }
 
+    if parsed.size.is_some() && !parsed.render_once {
+        return Err(CliError::new("--size requires --render-once"));
+    }
+
     Ok(parsed)
+}
+
+/// Parse a `--size` value: two decimal `u16`s joined by a lowercase `x`.
+fn parse_size(value: &str) -> Result<(u16, u16), CliError> {
+    let invalid = || {
+        CliError::new(format!(
+            "invalid --size value '{value}': expected <width>x<height> with width >= {} and height >= {}",
+            MIN_FRAME_SIZE.0, MIN_FRAME_SIZE.1
+        ))
+    };
+    let (width_text, height_text) = value.split_once('x').ok_or_else(invalid)?;
+    let width = decimal_u16(width_text).ok_or_else(invalid)?;
+    let height = decimal_u16(height_text).ok_or_else(invalid)?;
+    if width < MIN_FRAME_SIZE.0 || height < MIN_FRAME_SIZE.1 {
+        return Err(invalid());
+    }
+    Ok((width, height))
+}
+
+/// A `u16` made only of ASCII decimal digits (no sign, no empty string).
+fn decimal_u16(text: &str) -> Option<u16> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<u16>().ok()
 }
 
 /// A seed derived from the clock. Only the shell calls this; the core is pure.
@@ -284,12 +324,15 @@ mod tests {
             "14",
             "--seed",
             "42",
+            "--size",
+            "60x30",
         ])
         .unwrap();
 
         assert_eq!(parsed.seed, Some(42));
         assert_eq!(parsed.fps, 60);
         assert_eq!(parsed.frame, Some(14));
+        assert_eq!(parsed.size, Some((60, 30)));
         assert!(parsed.render_once);
         assert!(parsed.self_test_tui);
         assert!(parsed.no_persist);
@@ -346,6 +389,44 @@ mod tests {
 
         let live = args(&[]).unwrap();
         assert_ne!(resolved_seed(&live), DEMO_SEED);
+    }
+
+    #[test]
+    fn parses_size_for_render_once() {
+        let parsed = args(&["--render-once", "--size", "60x30"]).unwrap();
+        assert_eq!(parsed.size, Some((60, 30)));
+        assert_eq!(args(&["--render-once"]).unwrap().size, None);
+        assert!(
+            USAGE.contains("--size"),
+            "usage must document --size: {USAGE}"
+        );
+    }
+
+    #[test]
+    fn rejects_bad_size_values() {
+        for value in [
+            "60", "60x", "x30", "abc", "0x0", "59x30", "60x29", "100X36", "60x30x1",
+        ] {
+            let error = args(&["--render-once", "--size", value]).unwrap_err();
+            assert!(
+                error.message().contains("invalid --size"),
+                "value {value} gave: {}",
+                error.message()
+            );
+        }
+        assert!(args(&["--render-once", "--size"]).is_err());
+    }
+
+    #[test]
+    fn size_requires_render_once() {
+        let error = args(&["--size", "60x30"]).unwrap_err();
+        assert!(
+            error.message().contains("--size requires --render-once"),
+            "message was: {}",
+            error.message()
+        );
+        let parsed = args(&["--size", "60x30", "--render-once"]).unwrap();
+        assert_eq!(parsed.size, Some((60, 30)));
     }
 
     #[test]
