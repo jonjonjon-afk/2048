@@ -136,13 +136,21 @@ impl Ripple {
             .fold(0.0, f64::max)
     }
 
-    /// The ripple glyph at play-area cell `(x, y)`, or `None` for a blank cell.
-    pub fn glyph_at(&self, x: i32, y: i32) -> Option<char> {
+    /// The ripple glyph and its brightness amplitude at play-area cell `(x, y)`.
+    ///
+    /// The amplitude is the strongest image's, wall factor included, so the
+    /// renderer dims a glyph by exactly the value that selected it.
+    pub fn front_at(&self, x: i32, y: i32) -> Option<(char, f64)> {
         let amplitude = self.amplitude_at(x, y);
         RIPPLE_THRESHOLDS
             .iter()
             .find(|(_, minimum)| amplitude >= *minimum)
-            .map(|(glyph, _)| *glyph)
+            .map(|(glyph, _)| (*glyph, amplitude))
+    }
+
+    /// The ripple glyph at play-area cell `(x, y)`, or `None` for a blank cell.
+    pub fn glyph_at(&self, x: i32, y: i32) -> Option<char> {
+        self.front_at(x, y).map(|(glyph, _)| glyph)
     }
 }
 

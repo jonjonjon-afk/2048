@@ -266,15 +266,37 @@ fn draw_ripple(buffer: &mut Buffer, board: Rect, ripple: &Ripple) {
 
     for y in 0..BOARD_HEIGHT as i32 {
         for x in 0..BOARD_WIDTH as i32 {
-            let Some(glyph) = ripple.glyph_at(x, y) else {
+            let Some((glyph, amplitude)) = ripple.front_at(x, y) else {
                 continue;
             };
             if let Some(cell) = buffer.cell_mut((board.x + x as u16, board.y + y as u16)) {
-                cell.set_char(glyph)
-                    .set_style(Style::new().fg(colour).bg(BACKGROUND));
+                cell.set_char(glyph).set_style(
+                    Style::new()
+                        .fg(dimmed_colour(colour, amplitude))
+                        .bg(BACKGROUND),
+                );
             }
         }
     }
+}
+
+/// Dim a tile colour towards the renderer background by `amplitude` (SPEC 5.4).
+///
+/// `fg = bg + (colour - bg) * amplitude` per channel, rounded to the nearest
+/// integer, so a crest dims as it ages and a reflection starts at 55%.
+fn dimmed_colour(colour: Color, amplitude: f64) -> Color {
+    let Color::Rgb(red, green, blue) = colour else {
+        return colour;
+    };
+    let Color::Rgb(bg_red, bg_green, bg_blue) = BACKGROUND else {
+        return colour;
+    };
+    let mix = |channel: u8, background: u8| {
+        (f64::from(background) + (f64::from(channel) - f64::from(background)) * amplitude).round()
+            as u8
+    };
+
+    Color::Rgb(mix(red, bg_red), mix(green, bg_green), mix(blue, bg_blue))
 }
 
 fn draw_spark(buffer: &mut Buffer, board: Rect, spark: &Spark) {

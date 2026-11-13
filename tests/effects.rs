@@ -14,8 +14,8 @@ use game2048::effects::{
 };
 use game2048::game::{Board, Direction, Game, Merge};
 use game2048::render::{
-    board_layout, frame_buffer, frame_text, header_style, panel_layout, tile_colour, tile_style,
-    BOARD_HEIGHT, BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
+    board_layout, frame_buffer, frame_text, header_style, panel_layout, tile_style, BOARD_HEIGHT,
+    BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
 };
 use game2048::update::App;
 use game2048::Action;
@@ -57,6 +57,14 @@ fn find_symbol(buffer: &Buffer, area: Rect, target: char) -> Option<(u16, u16)> 
         }
     }
     None
+}
+
+/// Sum of the RGB channels; a cheap "how bright" measure for the fade test.
+fn color_luma(colour: Color) -> u32 {
+    match colour {
+        Color::Rgb(red, green, blue) => u32::from(red) + u32::from(green) + u32::from(blue),
+        _ => 0,
+    }
 }
 
 fn find_token(buffer: &Buffer, y: u16, token: &str) -> Option<(u16, u16)> {
@@ -475,22 +483,37 @@ fn tile_digits_stay_on_top_of_the_ripple() {
 }
 
 #[test]
-fn ripple_colour_comes_from_the_merged_value() {
-    // Pinned cells away from any tile label row, so the label layer cannot
-    // recolour them: (13,10) is the direct crest at 224 ms, (23,2) at 480 ms.
-    let at_224 = frame_buffer(&app_at(224), WIDTH, HEIGHT);
+fn ripple_colour_fades_with_age() {
     let panel = panel_layout(WIDTH, HEIGHT);
+    let colour_at = |millis: u64, x: i32, y: i32| -> Color {
+        let buffer = frame_buffer(&app_at(millis), WIDTH, HEIGHT);
+        buffer[(panel.left + 1 + x as u16, panel.top + 1 + y as u16)].fg
+    };
+
+    // SPEC 5.4 Brightness: fg = bg + (colour - bg) * amplitude, rounded, with
+    // bg = Rgb(6, 8, 20) and the value-4 colour Rgb(0, 200, 255).
+    let direct_224 = colour_at(224, 13, 10);
+    assert_eq!(direct_224, Color::Rgb(1, 152, 197), "224 ms direct crest");
     assert_eq!(
-        at_224[(panel.left + 1 + 13, panel.top + 1 + 10)].fg,
-        tile_colour(4),
-        "the 224 ms ripple must use the value-4 colour"
+        colour_at(224, 3, 10),
+        Color::Rgb(4, 87, 117),
+        "224 ms left-wall crest"
+    );
+    assert_eq!(
+        colour_at(480, 23, 2),
+        Color::Rgb(3, 98, 130),
+        "480 ms direct crest"
+    );
+    assert_eq!(
+        colour_at(700, 32, 2),
+        Color::Rgb(5, 51, 72),
+        "700 ms direct crest"
     );
 
-    let at_480 = frame_buffer(&app_at(480), WIDTH, HEIGHT);
-    assert_eq!(
-        at_480[(panel.left + 1 + 23, panel.top + 1 + 2)].fg,
-        tile_colour(4),
-        "the 480 ms ripple must use the value-4 colour"
+    let reflected_224 = color_luma(colour_at(224, 3, 10));
+    assert!(
+        color_luma(direct_224) > reflected_224,
+        "the 224 ms direct crest must be brighter than the reflected crest"
     );
 }
 
