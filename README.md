@@ -15,6 +15,10 @@ The game is specified in [`docs/SPEC.md`](docs/SPEC.md).
 - **M6 score count-up:** approved — 450 ms ease-out display that never feeds back into the rules.
 - **M7 merge ripple:** approved — the bouncing, fading 900 ms wave.
 - **M8 arcade high-score table:** approved — named table, name entry, side panel or `H` overlay, legacy migration.
+- **M9 handover refresh:** approved — current README, acceptance rows, clean-clone gate.
+- **M10 round merge ripple:** approved — aspect-corrected Euclidean wavefront.
+- **M11 half-block ripple:** approved — `▀`/`▄` subcells with two colours per cell.
+- **M12 lean handover:** in review — docs consolidated, no application code change.
 
 The project is feature-complete for the specification. The remaining checks are
 live-terminal ones that need a human at a real keyboard: truecolour and shimmer,
@@ -96,7 +100,9 @@ the coder agent implements them, maintains this README, and records proof in
 [`AGENTS.md`](AGENTS.md); the latest milestone review lives in `docs/reviews/`.
 
 ## More detail
+- [`docs/HANDOVER.md`](docs/HANDOVER.md) — entry point: run commands, controls, storage, architecture, proof.
+- [`docs/HISTORY.md`](docs/HISTORY.md) — one line per milestone M0-M11 with verdict and commit.
 - [`docs/SPEC.md`](docs/SPEC.md) — rules, layout, CLI, milestones and acceptance.
-- [`docs/EVIDENCE.md`](docs/EVIDENCE.md) — requirement and acceptance ID to proof.
+- [`docs/EVIDENCE.md`](docs/EVIDENCE.md) — acceptance ID to proof in `docs/evidence/ACCEPTANCE.md`.
 - [`docs/api-notes.md`](docs/api-notes.md) — verified external facts.
-- [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — decisions and open items.
+- [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — closed decisions and reasons.
