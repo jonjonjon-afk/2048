@@ -25,11 +25,14 @@
 | M11 | Half-block ripple | gate passed (round 2) | awaiting the reviewer's verdict (round 2) | docs/evidence/M11.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- F1: keep the correct `(0,4)` 150 ms values `Rgb(3,96,128)`/`Rgb(1,168,216)` in `ripple_colour_fades_with_age`; only the comment changes (Q16 accepted), no code change.
-- F2: allow `tests/cli.rs`; change only the two frame-14 ripple assertions in `render_once_demo_merge_frame14_contains_ripple_and_spark` from `▓`/`▒` to `▀`/`▄`, keep `✦`.
-- F3: commit `docs/reviews/M11.md` unchanged, re-run the exact gate through ev.sh (expect exit 0 and 147 tests), run the full evidence set again.
-- F3: refresh the M11 evidence map/limitations, EVIDENCE R5/R6 and A10 to done, answer Q15/Q16, update PROGRESS.
-- F3: verify the protected set (now excluding `tests/cli.rs`) has a 0-line diff and `opencode.json` stays uncommitted.
+- Commit the reviewer-owned `docs/SPEC.md` M12 line and `docs/reviews/M12.md` unchanged first.
+- Record the before size of the docs (R7) and create `docs/HISTORY.md` (12 milestone rows) and `docs/HANDOVER.md`.
+- Delete `docs/evidence/M0..M11*`, `docs/reviews/M0..M11.md`, `docs/evidence/M3/`, `M4/`, `e2e/`; ignore `/docs/evidence/e2e/`.
+- Build `docs/evidence/ACCEPTANCE.md`: A1-A11 with concise ev.sh blocks (test-result and pty lines).
+- Trim `EVIDENCE.md` (A rows only), `PROGRESS.md`, `OPEN_QUESTIONS.md` (<=13 rows) and `api-notes.md`.
+- Update README's detail links to HANDOVER/HISTORY/EVIDENCE/api-notes/OPEN_QUESTIONS.
+- Audit R6/R8: docs-only diff, protected files, SPEC one-line diff; record after size (R7).
+- Commit everything, run the exact M12 gate through ev.sh, fill evidence maps, report.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
