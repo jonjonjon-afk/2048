@@ -88,7 +88,7 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 ### 5.4 Effects (all deterministic under fixed `dt`)
 - **Plasma background**: per-cell colour from `sin`/`cos` of column, row and phase; phase advances by `dt`; dim enough to keep tiles readable.
 - **Merge ripple** (M7; replaces the M3 shockwave): for every merge a wave leaves the merged cell and travels outward at **40 cells per second** for **900 ms** (`age < 900`), bouncing off the play-area walls and fading out. One wave per merge, each with its own source and merged value.
-  - Space: the play area's 39 x 23 cells, `x` in `0..=38`, `y` in `0..=22`, `(0, 0)` top-left. The source is the merged card's centre `(col * 10 + 4.5, row * 6 + 2.5)`; distance is Chebyshev, `max(|dx|, |dy|)`.
+  - Space: the play area's 39 x 23 cells, `x` in `0..=38`, `y` in `0..=22`, `(0, 0)` top-left. The source is the merged card's centre `(col * 10 + 4.5, row * 6 + 2.5)`; distance is Euclidean with a row aspect of 2, `sqrt(dx*dx + (2*dy)*(2*dy))`, so one row counts as two columns and the crest reads round on a 1:2 terminal cell.
   - Walls: the play area's outer edges at `x = -0.5`, `x = 38.5`, `y = -0.5`, `y = 22.5`. A source at `(sx, sy)` has nine images: every combination of `sx`, `-1 - sx` (left wall) and `77 - sx` (right wall) with `sy`, `-1 - sy` (top wall) and `45 - sy` (bottom wall). Reflection is what makes the ripple return from a wall.
   - Wavefront: `radius = age_ms as f64 * 0.04` (no rounding). A cell is on the front for an image when `|distance - radius| <= 0.75`.
   - Amplitude: `1.0 - age_ms as f64 / 900.0`, multiplied by `0.55` for each wall crossed to reach that image (so `0.3025` for an image reflected off two walls). A cell uses its strongest image. Symbols: `>= 0.55` is `▓`, `>= 0.30` is `▒`, `>= 0.10` is `░`, below that nothing. Colour comes from the merged tile value.
@@ -189,6 +189,7 @@ Source: standard 2048 rules, hand-computed below. Tests assert these exactly.
 | G15 | `--demo-merge` (score 0 -> 4), frames 4 / 14 / 24 / 30 = 64 / 224 / 384 / 480 ms | `SCORE 1`, `SCORE 3`, `SCORE 3`, `SCORE 4`; `BEST 4` at every frame | hand-computed from 5.7: `floor(4 * (1 - (1 - t/450)^3))` = 1.475, 3.493, 3.987, then the 450 ms clamp |
 | G16 | insert `AAA 100`, `BBB 100`, `CCC 50`, then `DDD 200` into an empty table | rows `DDD 200`, `AAA 100`, `BBB 100`, `CCC 50`; ties keep insertion order; an 11th entry below the 10th is dropped | hand-computed from 5.3 |
 | G17 | a full table whose 10th score is 50; game over with 0, 50 and 51 | 0 and 50 do not qualify; 51 does | hand-computed from 5.3 |
+| G18 | ripple source at board cell 0 (play-area `(4.5, 2.5)`), 100 ms | `(7,1)` is on the front (`d = sqrt(2.5^2 + 3^2) = 3.905`); `(0,4)` is not (`d = sqrt(4.5^2 + 3^2) = 5.408`); a Chebyshev front would light `(0,4)` and miss `(7,1)` | hand-computed from 5.4 |
 
 ## 7. Data sources and modes
 | Source | What it provides | Purpose |
@@ -216,6 +217,7 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **M7 Merge ripple.** Replace the shockwave with the bouncing, fading ripple of section 5.4, keep sparks/flash/pop, update the effect snapshots and captures. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && make e2e'` exits 0.
 - **M8 Arcade high-score table.** Named table (section 5.3), name entry after game over (section 5.5), score panel at 100+ columns and `H` overlay below, legacy `highscore` migration, named restart proof. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --dump --seed 42 --no-persist | diff -q - tests/fixtures/dump_seed42.txt && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "HIGH SCORES" && cargo test --offline --test restart named_entry_survives_a_process_restart -- --exact && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && make e2e'` exits 0.
 - **M9 Handover refresh.** README, acceptance rows, clean-clone gate for M5-M8, no stale evidence pointers. *Gate:* `bash -o pipefail -c 'rm -rf /tmp/2048-clean && git clone . /tmp/2048-clean && cd /tmp/2048-clean && make check && make e2e && test -z "$(git status --porcelain)"'` exits 0; every acceptance row A1-A11 is complete in `docs/EVIDENCE.md`.
+- **M10 Round merge ripple (post-handover).** Replace the Chebyshev (square) wavefront with the aspect-corrected Euclidean circle of section 5.4; keep the radius, 900 ms lifetime, ±0.75 window, nine wall images, 0.55 reflection factor and colour fade, and update the pinned cells, effect fixtures and demo-merge capture. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && make e2e'` exits 0.
 
 ## 9. Acceptance checklist (IDs referenced in EVIDENCE.md)
 - **A1** At 100x36 and 60x30 the UI renders without panic, overlap or truncation (snapshot tests + reported dimensions).
@@ -227,7 +229,7 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **A7** At 100x36 and 60x30 the play-area frame is exactly 41x25, the cards are 9x5 with one-cell gaps, and every tile value sits on its card's middle row, centred within one cell (M5).
 - **A8** The live loop and the self-test pace to a 60 FPS deadline: `--self-test-tui --fps 60` prints a measured rate of 50-69 fps for 120 frames (M5).
 - **A9** The displayed score follows the G14/G15 values, re-targets from the shown value, never exceeds the real score, resets on restart, and leaves `BEST` immediate while `--dump` prints the real score (M6).
-- **A10** The merge ripple is visible, deterministic, reflects off at least one play-area wall and fades through `▓` -> `▒` -> `░` before it expires (M7).
+- **A10** The merge ripple is visible, deterministic, round rather than square (aspect-corrected Euclidean), reflects off at least one play-area wall and fades through `▓` -> `▒` -> `░` before it expires (M7, round crest M10).
 - **A11** A named score entered after game over is stored, reloaded and displayed in the table after a restart (M8).
 
 ## 10. Final report format
