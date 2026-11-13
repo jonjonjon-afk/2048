@@ -3,10 +3,10 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M11 (half-block ripple) — implementation, tests, fixtures and docs done; gate BLOCKED by Q15
-- Last gate result: M11 gate exit 2 (docs/evidence/M11.md "M11 gate attempt"); 99 lib + 12 CLI (11 pass, 1 fail) + 28 effects + 1 restart + 7 score = 147 tests, 146 passed / 1 failed
-- The only failure is the protected `tests/cli.rs::render_once_demo_merge_frame14_contains_ripple_and_spark` asserting the removed `▓`/`▒`; R2 and R6 conflict (Q15)
-- Next action: reviewer resolves Q15 (allow that one CLI test edit) and Q16 (R3 `(0,4)` 150 ms literals); no further coder work until then
+- Milestone: M11 (half-block ripple) — gate passed in round 2 (F1/F2 corrections), 147 tests, 0 failed
+- Last gate result: M11 gate exit 0 (docs/evidence/M11.md "M11 gate round 2"); 99 lib + 12 CLI + 28 effects + 1 restart + 7 score = 147 tests, 0 failed; two `make e2e` runs exit 0 with `docs/evidence/e2e/` clean
+- Q15/Q16 are answered; `tests/cli.rs` changed exactly the two frame-14 ripple assertions (2/2); protected set (without `tests/cli.rs`) 0-line diff
+- Next action: none; stop at the M11 gate and await the reviewer's round-2 verdict
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -22,18 +22,14 @@
 | M8 | Arcade high-score table | gate passed | approved (round 2, `ca53b8c`) | docs/evidence/M8.md |
 | M9 | Handover refresh | gate passed | awaiting the reviewer's verdict (round 1) | docs/evidence/M9.md |
 | M10 | Round merge ripple | gate passed (round 2) | approved (round 2, `6adddbe`) | docs/evidence/M10.md |
-| M11 | Half-block ripple | gate BLOCKED (Q15 protected CLI assertion) | awaiting the reviewer's round-1 verdict | docs/evidence/M11.md |
+| M11 | Half-block ripple | gate passed (round 2) | awaiting the reviewer's verdict (round 2) | docs/evidence/M11.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- M11 R1: add `Ripple::halves_at(x, y)` (top `y-0.25`, bottom `y+0.25`, same nine images/metric) and a `>= 0.10` lit rule; keep `front_at`/`glyph_at`.
-- M11 R2/R3: `draw_ripple` emits `▀`/`▄` with fg = top colour, bg = bottom colour (or BACKGROUND); per-half fade mix; no `▓`/`▒`/`░`.
-- M11 R1/R2: add `ripple_halves_match_the_subcell_table`; update the 100/150/224/480/700 frame pins and rename the fade test.
-- M11 R3/R4: update `ripple_colour_fades_with_age` per-half, keep layering, lifetime and the direct-vs-reflected brightness pin.
-- M11 R5: regenerate the three 100x36 effect fixtures and the demo-merge capture in the same commit; two `make e2e` runs.
-- M11 R6: run every cited command through `scripts/ev.sh`, update EVIDENCE/A10/PROGRESS/api-notes, keep the protected set byte-identical.
-- R6 risk found while reading: `tests/cli.rs` (protected) asserts frame 14 contains `▓` and `▒`, which R2 removes; if it fails, stop and report BLOCKED with a proposed default.
-- R3 risk found while reading: the `(0,4)` 150 ms literals `Rgb(4,87,117)`/`Rgb(1,179,229)` are impossible at 150 ms (they are the 224 ms wall and 100 ms direct amplitudes); pin the §5.4-derived values and report.
-- Outcome: R1-R4 done and proven; fixtures regenerated; R5/R6 blocked by Q15, handled per AGENTS (stop, report BLOCKED, no protected-file edit).
+- F1: keep the correct `(0,4)` 150 ms values `Rgb(3,96,128)`/`Rgb(1,168,216)` in `ripple_colour_fades_with_age`; only the comment changes (Q16 accepted), no code change.
+- F2: allow `tests/cli.rs`; change only the two frame-14 ripple assertions in `render_once_demo_merge_frame14_contains_ripple_and_spark` from `▓`/`▒` to `▀`/`▄`, keep `✦`.
+- F3: commit `docs/reviews/M11.md` unchanged, re-run the exact gate through ev.sh (expect exit 0 and 147 tests), run the full evidence set again.
+- F3: refresh the M11 evidence map/limitations, EVIDENCE R5/R6 and A10 to done, answer Q15/Q16, update PROGRESS.
+- F3: verify the protected set (now excluding `tests/cli.rs`) has a 0-line diff and `opencode.json` stays uncommitted.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
