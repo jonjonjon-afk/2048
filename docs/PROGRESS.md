@@ -17,14 +17,11 @@
 | M4 | Polish and handover | gate passed | pending | docs/evidence/M4.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- F2: restore `parse(std::env::args().skip(1))`; correct the R8 ignore check to drop `.skip(`; rerun it.
-- F1: fill the four header sections of `docs/evidence/M4.md`, one map row per R1-R8 and A1-A6.
-- F1: name the final passing R5 block and label the failed attempts honestly in Deviations.
-- F2: update the R8 sentence in `docs/EVIDENCE.md` so it no longer claims `.skip(` is absent.
-- Commit F1/F2 (code unchanged apart from the revert).
-- F3: rerun the exact gate through ev.sh as "M4 gate final round 2".
-- F4: update PROGRESS (gate label, no false done claim, no approval), commit the evidence.
-- F4: verify the gate-HEAD..HEAD diff is only `docs/evidence/M4.md` and `docs/PROGRESS.md`.
+- U1: point the R6 and A6 proof labels in `docs/EVIDENCE.md` at `M4 gate final round 2`.
+- U1: record the grep proof through ev.sh; no other EVIDENCE row changes.
+- U2: commit `docs/reviews/M4.md` byte-unchanged (no content edit).
+- U2: record the committed-vs-working hash and the clean tree through ev.sh.
+- Commit the U1 evidence append after the U2 check; no code, test, Makefile or README change.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
