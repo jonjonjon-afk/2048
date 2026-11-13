@@ -1,26 +1,25 @@
 # PROGRESS
 
-> Owned by the coder. Compact final state after M12; the entry point is
+> Owned by the coder. Compact state after M13 round 3; the entry point is
 > `docs/HANDOVER.md`.
 
-## M13 plan (round 3 — fix F6 only)
-1. Add the hand-derived `last_spawn == Some(Spawn { cell: 0, value: 2 })` assert to `demo_slide_timeline_is_pinned`.
-2. Correct the evidence map's GATE and F5 rows to what is actually true.
-3. Commit the test + docs so the gate runs on a clean tree.
-4. Run the exact M13 gate from `docs/reviews/M13.md` line 13 through `scripts/ev.sh` label "M13 gate".
-5. Record the real test count and gate exit code in PROGRESS and the evidence rows; commit the appended block.
+## M13 final state (round 3 — F6 only)
+1. `demo_slide_timeline_is_pinned` now pins `last_spawn == Some(Spawn { cell: 0, value: 2 })`, hand-derived from SPEC 5.2 with seed 42.
+2. The evidence map's GATE and F5 rows now say what happened: round 2 had no gate block (F5 deviated); round 3 adds it.
+3. The test + docs were committed at `20b922b`, so the gate ran on a clean tree.
+4. The exact M13 gate from `docs/reviews/M13.md` line 13 ran through `scripts/ev.sh` label "M13 gate".
+5. Result: **exit 0**, **181 tests, 0 failed**; the block is committed.
 
 ## Current state
-- All milestones M0-M11 are approved; the game is feature-complete for the SPEC.
-- M12 (lean handover) is documentation/repo cleanup only. The per-milestone
-  reviews and raw logs were deleted; `docs/HISTORY.md`, `docs/HANDOVER.md` and
-  `docs/evidence/ACCEPTANCE.md` replace them. Git history keeps every old file.
-- `make check`: **147 tests, 0 failed** (99 lib + 12 CLI + 28 effects + 1
-  restart + 7 score). `make e2e` is clean against the fixtures.
-- M12 gate: **exit 0** at commit `bdd89a2` round 2 (local and clean clone 147/0,
-  clone `make e2e` green, clone status empty). Proof: `docs/evidence/M12.md`
-  "M12 round 2 gate"; pointer check "F3 pointer check" is 11/11, 0 dangling.
-- No next action: stop at the M12 gate and await the reviewer's verdict.
+- M0-M12 are approved; M13 (tile slide and fusion jiggle) awaits its round-3 review.
+- `make check`: **181 tests, 0 failed** (119 lib + 15 CLI + 39 effects + 1
+  restart + 7 score). `make e2e` is clean against the four slide and six older fixtures.
+- M13 gate: **exit 0** at commit `20b922b` (clean tree): `make check`, the
+  seed-42 dump, the frame 3/9/12 slide diffs and `make e2e`. Proof:
+  `docs/evidence/M13.md` "M13 gate".
+- M12 gate: **exit 0** at commit `bdd89a2` round 2 (147/0). Proof:
+  `docs/evidence/M12.md` "M12 round 2 gate".
+- No next action: stop at the M13 gate and await the reviewer's verdict.
 
 ## Milestones
 | ID | Title | Verdict | Final commit | History |
@@ -37,6 +36,7 @@
 | M9 | Handover refresh | approved (round 2) | `9e22a51` | docs/HISTORY.md |
 | M10 | Round merge ripple | approved (round 2) | `6adddbe` | docs/HISTORY.md |
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
+| M13 | Tile slide and fusion jiggle | awaiting round-3 review | `20b922b` | docs/evidence/M13.md |
 
 ## M12 checklist
 | ID | State |
