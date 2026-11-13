@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use game2048::demo::demo_merge_app;
+use game2048::demo::{demo_merge_app, demo_slide_app};
 use game2048::effects::{
     Effects, BEST_PULSE_MILLIS, CELL_CENTRE_X, CELL_CENTRE_Y, CELL_PITCH_X, CELL_PITCH_Y,
     FLASH_MILLIS, POP_MILLIS, RIPPLE_BOTTOM_GLYPH, RIPPLE_FRONT_WINDOW, RIPPLE_LIT_THRESHOLD,
@@ -14,6 +14,7 @@ use game2048::effects::{
     SPARK_SYMBOLS,
 };
 use game2048::game::{Board, Direction, Game, Merge};
+use game2048::highscore::HighScores;
 use game2048::render::{
     board_layout, frame_buffer, frame_text, header_style, panel_layout, tile_style, BOARD_HEIGHT,
     BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
@@ -922,4 +923,253 @@ fn best_pulse_starts_only_on_a_new_best() {
     new_best.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
     assert_eq!(new_best.game.best, 4);
     assert_eq!(new_best.effects.best_pulse_age(), Some(Duration::ZERO));
+}
+
+// ---------------------------------------------------------------------------
+// M13: slide frames, jiggle frames and overlays waiting for the landing.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_sliding_card_is_drawn_between_its_slots() {
+    let app = demo_slide_app(3);
+    assert!(app.sliding(), "frame 3 is inside the slide");
+    let buffer = frame_buffer(&app, WIDTH, HEIGHT);
+
+    // The two 2s of column 2 travel from rows 0/1 toward row 3; at 48 ms their
+    // labels sit at play cells (24,12) and (24,15) (R4 pins).
+    assert_eq!(play_cell(&buffer, 24, 12), '2', "cell 2's moving 2");
+    assert_eq!(play_cell(&buffer, 24, 15), '2', "cell 6's moving 2");
+}
+
+#[test]
+fn the_merged_value_waits_for_the_landing() {
+    let during = frame_buffer(&demo_slide_app(3), WIDTH, HEIGHT);
+    assert_ne!(
+        play_cell(&during, 24, 20),
+        '4',
+        "the merged 4 must not be drawn during the slide"
+    );
+
+    let after = frame_buffer(&demo_slide_app(9), WIDTH, HEIGHT);
+    assert_eq!(
+        play_cell(&after, 26, 20),
+        '4',
+        "the merged 4 appears at the landing with dx = +2"
+    );
+}
+
+#[test]
+fn the_spawned_tile_is_hidden_during_the_slide() {
+    let during = demo_slide_app(3);
+    let spawn = during.game.last_spawn.expect("the demo move spawns");
+    assert_eq!(spawn.cell, 11, "the pinned demo spawn");
+
+    let buffer = frame_buffer(&during, WIDTH, HEIGHT);
+    for y in 13..=15 {
+        for x in 31..=37 {
+            let symbol = buffer[(x, y)].symbol().chars().next().unwrap_or(' ');
+            assert!(
+                !symbol.is_ascii_digit(),
+                "the empty slot at ({x},{y}) shows {symbol:?} during the slide"
+            );
+        }
+    }
+
+    let after = frame_buffer(&demo_slide_app(9), WIDTH, HEIGHT);
+    assert_eq!(
+        play_cell(&after, 34, 14),
+        '2',
+        "the spawned tile is drawn after the landing"
+    );
+}
+
+#[test]
+fn the_moving_plaque_is_opaque() {
+    let background = Color::Rgb(6, 8, 20);
+
+    let during = frame_buffer(&demo_slide_app(3), WIDTH, HEIGHT);
+    assert_eq!(
+        play_style(&during, 24, 11).1,
+        background,
+        "the moving card's interior is the renderer background"
+    );
+
+    let after = frame_buffer(&demo_slide_app(9), WIDTH, HEIGHT);
+    assert_ne!(
+        play_style(&after, 24, 11).1,
+        background,
+        "after the landing the same cell shows the plasma"
+    );
+}
+
+#[test]
+fn a_merged_card_jiggles_by_the_documented_offsets() {
+    // The pinned demo frames: landing at 144 ms, so jiggle ages 0/48/96/176/240.
+    for (frame, expected) in [
+        (9u64, (26u16, 20u16)),
+        (12, (22, 20)),
+        (15, (25, 20)),
+        (20, (24, 20)),
+        (24, (24, 20)),
+    ] {
+        let buffer = frame_buffer(&demo_slide_app(frame), WIDTH, HEIGHT);
+        assert_eq!(
+            play_cell(&buffer, i32::from(expected.0), i32::from(expected.1)),
+            '4',
+            "frame {frame} merged 4"
+        );
+    }
+
+    // The 8 8 0 0 left merge at cell 0: dx = +2, -2 (clamped), +1.
+    let board = Board::from_rows([[8, 8, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let mut app = App::new(Game::from_state(board, 0, 0, 42));
+    app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    app.update(None, Duration::from_millis(140));
+
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 5, 2),
+        '1',
+        "age 0: dx = +2"
+    );
+    app.update(None, Duration::from_millis(40));
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 3, 2),
+        '1',
+        "age 40: dx = -2 clamped to x = 0"
+    );
+    app.update(None, Duration::from_millis(40));
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 4, 2),
+        '1',
+        "age 80: dx = +1"
+    );
+}
+
+#[test]
+fn the_jiggle_ends_after_240_ms() {
+    let at_176 = demo_slide_app(20);
+    assert_eq!(at_176.jiggle_dx(14), Some(0), "age 176 has no offset");
+    assert_eq!(
+        play_cell(&frame_buffer(&at_176, WIDTH, HEIGHT), 24, 20),
+        '4'
+    );
+
+    let at_240 = demo_slide_app(24);
+    assert_eq!(at_240.jiggle_dx(14), None, "age 240 clears the jiggle");
+    assert_eq!(
+        play_cell(&frame_buffer(&at_240, WIDTH, HEIGHT), 24, 20),
+        '4',
+        "the card is back in its slot"
+    );
+}
+
+#[test]
+fn the_jiggle_never_leaves_the_board() {
+    // Cell 0 with dx = -2 clamps to x = 0.
+    let board = Board::from_rows([[8, 8, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let mut left = App::new(Game::from_state(board, 0, 0, 42));
+    left.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    left.update(None, Duration::from_millis(140));
+    left.update(None, Duration::from_millis(40));
+    let buffer = frame_buffer(&left, WIDTH, HEIGHT);
+    assert_eq!(play_cell(&buffer, 0, 0), '╭', "cell 0 clamps to column 0");
+    assert_eq!(play_cell(&buffer, 3, 2), '1', "the label clamps with the card");
+
+    // Cell 3 with dx = +2 clamps to x = 30, so the card ends at column 38.
+    let board = Board::from_rows([[0, 0, 8, 8], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let mut right = App::new(Game::from_state(board, 0, 0, 42));
+    right.update(Some(Action::Move(Direction::Right)), Duration::ZERO);
+    right.update(None, Duration::from_millis(140));
+    let buffer = frame_buffer(&right, WIDTH, HEIGHT);
+    assert_eq!(play_cell(&buffer, 30, 0), '╭', "cell 3 clamps to column 30");
+    assert_eq!(play_cell(&buffer, 38, 0), '╮', "the card stays inside 39x23");
+    assert_eq!(play_cell(&buffer, 33, 2), '1', "the clamped label");
+}
+
+fn merge_game_over_board() -> Board {
+    Board::from_rows([
+        [2, 2, 8, 16],
+        [16, 32, 64, 128],
+        [8, 16, 32, 64],
+        [64, 128, 8, 32],
+    ])
+}
+
+fn full_high_scores() -> HighScores {
+    let mut table = HighScores::new();
+    for (name, score) in [
+        ("P0", 1000),
+        ("P1", 900),
+        ("P2", 800),
+        ("P3", 700),
+        ("P4", 600),
+        ("P5", 500),
+        ("P6", 400),
+        ("P7", 300),
+        ("P8", 200),
+        ("P9", 50),
+    ] {
+        table.insert(name, score);
+    }
+    table
+}
+
+#[test]
+fn the_win_overlay_waits_for_the_landing() {
+    let board =
+        Board::from_rows([[1024, 1024, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let mut app = App::new(Game::from_state(board, 0, 0, 42));
+    app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    assert!(app.game.won);
+    assert!(
+        !frame_text(&app, WIDTH, HEIGHT).contains("2048!"),
+        "the win overlay must wait for the slide"
+    );
+
+    app.update(None, Duration::from_millis(140));
+    assert!(
+        frame_text(&app, WIDTH, HEIGHT).contains("2048!"),
+        "the win overlay appears after the landing"
+    );
+}
+
+#[test]
+fn the_game_over_overlay_waits_for_the_landing() {
+    let mut app = App::with_table(
+        Game::from_state(merge_game_over_board(), 0, 0, 42),
+        full_high_scores(),
+    );
+    app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    assert!(app.game.game_over);
+    assert!(!app.entry_active(), "score 4 does not beat the 10th");
+    assert!(
+        !frame_text(&app, WIDTH, HEIGHT).contains("GAME OVER"),
+        "the game-over overlay must wait for the slide"
+    );
+
+    app.update(None, Duration::from_millis(140));
+    assert!(
+        frame_text(&app, WIDTH, HEIGHT).contains("GAME OVER"),
+        "the game-over overlay appears after the landing"
+    );
+}
+
+#[test]
+fn the_entry_overlay_waits_for_the_landing() {
+    let mut app = App::with_table(
+        Game::from_state(merge_game_over_board(), 0, 0, 42),
+        HighScores::new(),
+    );
+    app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    assert!(app.entry_active(), "an empty table qualifies the score");
+    assert!(
+        !frame_text(&app, WIDTH, HEIGHT).contains("NEW HIGH SCORE"),
+        "the name-entry overlay must wait for the slide"
+    );
+
+    app.update(None, Duration::from_millis(140));
+    assert!(
+        frame_text(&app, WIDTH, HEIGHT).contains("NEW HIGH SCORE"),
+        "the name-entry overlay appears after the landing"
+    );
 }

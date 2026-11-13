@@ -29,6 +29,7 @@ Headless checks that need no keyboard:
 cargo run --quiet -- --dump --seed 42            # exact core block, SPEC §5.6
 cargo run --quiet -- --render-once --seed 42 --no-persist
 cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist
+cargo run --quiet -- --render-once --demo-slide --frame 9 --no-persist   # M13 card slide + jiggle
 script -qec "./target/debug/game2048 --self-test-tui --seed 42 --no-persist --fps 60" /dev/null
 ```
 `--self-test-tui` opens the real terminal, draws 120 frames at the live pacing,
@@ -73,8 +74,8 @@ open during play.
   once. When the table is missing and that file holds a positive score, it
   becomes a `--- <value>` row on the next save; the old file is never written.
 - Quitting or restarting before game over saves nothing: only a name entered on
-  the overlay is persisted. `--demo`, `--demo-merge`, `--no-persist`, `--dump`
-  and `--render-once` use an in-memory store.
+  the overlay is persisted. `--demo`, `--demo-merge`, `--demo-slide`,
+  `--no-persist`, `--dump` and `--render-once` use an in-memory store.
 
 ## Terminal requirements
 - Minimum 60x30 (columns x rows); target and recommended 100x36. Below the
@@ -82,7 +83,8 @@ open during play.
   cleanly.
 - 24-bit truecolour terminal (modern xterm, kitty, alacritty, foot, iTerm2).
   Effects are CPU-rendered ANSI cells: plasma background, merge ripple in
-  `▀`/`▄` half blocks, particle sparks, tile flash, spawn pop, BEST pulse.
+  `▀`/`▄` half blocks, particle sparks, tile flash, spawn pop, BEST pulse, and
+  the M13 140 ms ease-out tile slide with its 240 ms merge jiggle.
 - The animation target is 60 FPS (`--fps`); core rules are instant. Raw mode and
   the alternate screen are restored on normal quit and on panic.
 

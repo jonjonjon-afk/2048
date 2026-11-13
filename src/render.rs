@@ -12,6 +12,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{Frame, Terminal};
 
+use crate::anim::{clamped_anchor, Slide, CELL_PITCH_X, CELL_PITCH_Y};
 use crate::effects::{Ripple, Spark, RIPPLE_BOTTOM_GLYPH, RIPPLE_TOP_GLYPH};
 use crate::highscore::NAME_MAX_LEN;
 use crate::update::App;
@@ -153,6 +154,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_high_scores(frame, area, app);
     render_board_cards(frame, area, app);
     render_effects(frame, area, app);
+    render_moving_cards(frame, area, app);
     render_board_labels(frame, area, app);
     render_footer(frame, area, app);
     render_overlay(frame, area, app);
@@ -304,9 +306,18 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
     let layout = board_layout(area.width, area.height);
 
     for cell in 0..16 {
+        // While the slide runs every slot is an empty card and the moving
+        // cards are painted later, after the effect layer (SPEC 5.4, M13).
+        // A jiggling merged cell draws its card at the offset in the second
+        // pass below, so its slot is left alone here.
+        let sliding = app.sliding();
+        if !sliding && app.jiggle_dx(cell).is_some() {
+            continue;
+        }
         let origin = cell_origin(layout, cell);
-        let value = app.game.board.cell(cell);
-        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
+        let value = if sliding { 0 } else { app.game.board.cell(cell) };
+        let bright =
+            !sliding && (app.effects.is_flashing(cell) || app.effects.is_popping(cell));
         let border = if bright {
             Style::new().fg(Color::Rgb(255, 255, 255)).bg(BACKGROUND)
         } else {
@@ -320,12 +331,57 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Draw every moving card over the effect layer while a slide is playing.
+///
+/// The card is opaque (interior = renderer background), its border uses the
+/// source tile's colour and its value sits on card row 2 with the same
+/// centring as a settled card (SPEC 4 Moving card, M13).
+fn render_moving_cards(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(slide) = app.slide() else {
+        return;
+    };
+    let layout = board_layout(area.width, area.height);
+    let animation = Slide { age: slide.age };
+
+    for track in &slide.tracks {
+        let (x, y) = animation.anchor(track);
+        draw_tile_card(
+            frame,
+            layout.left as i32 + x,
+            layout.top as i32 + y,
+            track.value,
+            false,
+        );
+    }
+}
+
 fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
+    // The moving cards already carry their own digits; the settled board's
+    // labels appear only after the landing (SPEC 5.4, M13).
+    if app.sliding() {
+        return;
+    }
+
     let layout = board_layout(area.width, area.height);
 
+    // A jiggling merged card and its label move together, so draw the whole
+    // card at the clamped offset after the effect layer (SPEC 5.4, M13).
     for cell in 0..16 {
         let value = app.game.board.cell(cell);
         if value == 0 {
+            continue;
+        }
+        let Some(dx) = app.jiggle_dx(cell) else {
+            continue;
+        };
+        let (x, y) = jiggle_anchor(layout, cell, dx);
+        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
+        draw_tile_card(frame, x, y, value, bright);
+    }
+
+    for cell in 0..16 {
+        let value = app.game.board.cell(cell);
+        if value == 0 || app.jiggle_dx(cell).is_some() {
             continue;
         }
         let origin = cell_origin(layout, cell);
@@ -341,6 +397,60 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
             .style(style);
         frame.render_widget(label, inner);
     }
+}
+
+/// The clamped absolute anchor of a jiggling card.
+fn jiggle_anchor(layout: BoardLayout, cell: usize, dx: i32) -> (i32, i32) {
+    let column = (cell % 4) as i32;
+    let row = (cell / 4) as i32;
+    let (x, y) = clamped_anchor(column * CELL_PITCH_X + dx, row * CELL_PITCH_Y);
+    (layout.left as i32 + x, layout.top as i32 + y)
+}
+
+/// Draw one opaque 9x5 tile card with its value on card row 2.
+fn draw_tile_card(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
+    let origin = Rect::new(x as u16, y as u16, CARD_WIDTH, CARD_HEIGHT);
+
+    {
+        let buffer = frame.buffer_mut();
+        for row in 0..CARD_HEIGHT {
+            for column in 0..CARD_WIDTH {
+                if let Some(cell) = buffer.cell_mut((origin.x + column, origin.y + row)) {
+                    cell.set_symbol(" ")
+                        .set_style(Style::new().fg(BACKGROUND).bg(BACKGROUND));
+                }
+            }
+        }
+    }
+
+    let border = if bright {
+        Style::new().fg(Color::Rgb(255, 255, 255)).bg(BACKGROUND)
+    } else {
+        Style::new().fg(tile_colour(value)).bg(BACKGROUND)
+    };
+    let card = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(border);
+    frame.render_widget(card, origin);
+
+    let inner = Rect::new(
+        origin.x + 1,
+        origin.y + CARD_HEIGHT / 2,
+        LABEL_WIDTH,
+        1,
+    );
+    let style = if bright {
+        bright_tile_style(value)
+    } else {
+        tile_style(value)
+    };
+    frame.render_widget(
+        Paragraph::new(value.to_string())
+            .alignment(Alignment::Center)
+            .style(style),
+        inner,
+    );
 }
 
 fn render_effects(frame: &mut Frame, area: Rect, app: &App) {
@@ -456,6 +566,11 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_overlay(frame: &mut Frame, area: Rect, app: &App) {
+    // Win, game-over, name-entry and table overlays wait for the landing
+    // (SPEC 5.4 Effect start, M13); the state behind them is already final.
+    if app.sliding() {
+        return;
+    }
     if app.entry_active() {
         render_entry_overlay(frame, area, app);
     } else if app.game.won {
@@ -1220,6 +1335,8 @@ mod tests {
             Some(crate::action::Action::Move(crate::game::Direction::Left)),
             Duration::ZERO,
         );
+        // M13: the name-entry overlay waits for the 140 ms landing.
+        full.update(None, Duration::from_millis(140));
         for character in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] {
             full.update(
                 Some(crate::action::Action::EntryChar(character)),

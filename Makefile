@@ -23,6 +23,8 @@ e2e:
 	$(CARGO) run --quiet -- --dump --seed 42 > docs/evidence/e2e/dump_seed42.txt
 	$(CARGO) run --quiet -- --render-once --seed 42 --no-persist > docs/evidence/e2e/frame_100x36_seed42.txt
 	$(CARGO) run --quiet -- --render-once --demo-merge --frame 14 --no-persist > docs/evidence/e2e/frame_100x36_demo_merge_14.txt
+	$(CARGO) run --quiet -- --render-once --demo-slide --frame 9 --no-persist > docs/evidence/e2e/frame_100x36_demo_slide_09.txt
 	diff -u tests/fixtures/dump_seed42.txt docs/evidence/e2e/dump_seed42.txt
 	diff -u tests/fixtures/frame_100x36_seed42.txt docs/evidence/e2e/frame_100x36_seed42.txt
 	diff -u tests/fixtures/effect_100x36_frame_14.txt docs/evidence/e2e/frame_100x36_demo_merge_14.txt
+	diff -u tests/fixtures/slide_100x36_frame_09.txt docs/evidence/e2e/frame_100x36_demo_slide_09.txt

@@ -27,6 +27,7 @@ Options:
   --frame <n>      animation frame for --render-once (16 ms steps)
   --demo           seeded showcase board with an in-memory score
   --demo-merge     demo board with a merge ready for captures
+  --demo-slide     synthetic board with one sliding Down move for captures
   --no-persist     force the in-memory high-score store
   --self-test-tui  enter the TUI, draw 120 paced frames, restore and exit
   --fps <n>        live frame rate (default 60)
@@ -72,6 +73,7 @@ pub struct Args {
     pub no_persist: bool,
     pub demo: bool,
     pub demo_merge: bool,
+    pub demo_slide: bool,
     pub fps: u32,
     pub frame: Option<u64>,
 }
@@ -88,6 +90,7 @@ impl Default for Args {
             no_persist: false,
             demo: false,
             demo_merge: false,
+            demo_slide: false,
             fps: DEFAULT_FPS,
             frame: None,
         }
@@ -133,6 +136,7 @@ where
             "--no-persist" => parsed.no_persist = true,
             "--demo" => parsed.demo = true,
             "--demo-merge" => parsed.demo_merge = true,
+            "--demo-slide" => parsed.demo_slide = true,
             "--fps" => {
                 let value = arguments
                     .next()
@@ -182,7 +186,7 @@ pub fn default_seed() -> u64 {
 pub fn resolved_seed(args: &Args) -> u64 {
     match args.seed {
         Some(seed) => seed,
-        None if args.demo || args.demo_merge => DEMO_SEED,
+        None if args.demo || args.demo_merge || args.demo_slide => DEMO_SEED,
         None => default_seed(),
     }
 }

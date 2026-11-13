@@ -236,3 +236,55 @@ fn effect_snapshots_match_frames_4_14_24() {
         );
     }
 }
+
+#[test]
+fn slide_frames_match_the_fixtures() {
+    let fixtures = [
+        (3u64, include_str!("fixtures/slide_100x36_frame_03.txt")),
+        (9, include_str!("fixtures/slide_100x36_frame_09.txt")),
+        (12, include_str!("fixtures/slide_100x36_frame_12.txt")),
+    ];
+
+    for (frame, fixture) in fixtures {
+        let number = frame.to_string();
+        let output = run(&[
+            "--render-once",
+            "--demo-slide",
+            "--frame",
+            &number,
+            "--no-persist",
+        ]);
+
+        assert!(output.status.success(), "slide frame {frame} must exit 0");
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("stdout is UTF-8"),
+            fixture,
+            "slide frame {frame} must match its committed fixture"
+        );
+    }
+}
+
+#[test]
+fn slide_60x30_matches_the_fixture() {
+    let app = game2048::demo::demo_slide_app(9);
+    let text = game2048::render::frame_text(&app, 60, 30);
+
+    assert_eq!(text.lines().count(), 30);
+    assert!(text.lines().all(|line| line.chars().count() == 60));
+    assert_eq!(
+        text,
+        include_str!("fixtures/slide_60x30_frame_09.txt"),
+        "the 60x30 slide frame must match its fixture"
+    );
+}
+
+#[test]
+fn demo_slide_flag_is_parsed_and_documented() {
+    let parsed = game2048::cli::parse(["--demo-slide".to_owned()]).expect("parse --demo-slide");
+
+    assert!(parsed.demo_slide);
+    assert!(
+        game2048::cli::USAGE.contains("--demo-slide"),
+        "--help must document --demo-slide"
+    );
+}
