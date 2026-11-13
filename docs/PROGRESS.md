@@ -1,6 +1,6 @@
 # PROGRESS
 
-> Owned by the coder. Compact state after M13 round 3; the entry point is
+> Owned by the coder. Compact state after M14 round 1; the entry point is
 > `docs/HANDOVER.md`.
 
 ## M14 plan (round 1)
@@ -20,15 +20,19 @@
 5. Result: **exit 0**, **181 tests, 0 failed**; the block is committed.
 
 ## Current state
-- M0-M12 are approved; M13 (tile slide and fusion jiggle) awaits its round-3 review.
-- `make check`: **181 tests, 0 failed** (119 lib + 15 CLI + 39 effects + 1
-  restart + 7 score). `make e2e` is clean against the four slide and six older fixtures.
+- M0-M13 are approved; M14 (jiggle along the merge axis) is at its round-1 gate.
+- `make check`: **185 tests, 0 failed** (121 lib + 15 CLI + 41 effects + 1
+  restart + 7 score). `make e2e` is clean against the four slide and six older
+  fixtures.
+- M14 gate: **exit 0** at commit `0bd8448` (clean source tree): `make check`,
+  the seed-42 dump, the frame 3/9/12 slide diffs and `make e2e`. Proof:
+  `docs/evidence/M14.md` "M14 gate".
 - M13 gate: **exit 0** at commit `20b922b` (clean tree): `make check`, the
   seed-42 dump, the frame 3/9/12 slide diffs and `make e2e`. Proof:
   `docs/evidence/M13.md` "M13 gate".
 - M12 gate: **exit 0** at commit `bdd89a2` round 2 (147/0). Proof:
   `docs/evidence/M12.md` "M12 round 2 gate".
-- No next action: stop at the M13 gate and await the reviewer's verdict.
+- No next action: stop at the M14 gate and await the reviewer's verdict.
 
 ## Milestones
 | ID | Title | Verdict | Final commit | History |
@@ -45,7 +49,8 @@
 | M9 | Handover refresh | approved (round 2) | `9e22a51` | docs/HISTORY.md |
 | M10 | Round merge ripple | approved (round 2) | `6adddbe` | docs/HISTORY.md |
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
-| M13 | Tile slide and fusion jiggle | awaiting round-3 review | `20b922b` | docs/evidence/M13.md |
+| M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | docs/evidence/M13.md |
+| M14 | Jiggle along the merge axis | awaiting round-1 review | `0bd8448` | docs/evidence/M14.md |
 
 ## M12 checklist
 | ID | State |
