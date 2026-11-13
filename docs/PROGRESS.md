@@ -17,14 +17,14 @@
 | M4 | Polish and handover | gate passed | pending | docs/evidence/M4.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- R1: correct the M3 R3 radius wording and record the 0a00859..f9bd22d stat (done).
-- R2: process-restart test through `FileStore::from_default_path()` (done).
-- R3: one queued stderr warning on a failed save, printed after restore (done).
-- R4: handover README with targets, paths, sizes, status and ownership (done).
-- R7: `make e2e` runs all integration suites plus three M4 captures diffed against fixtures (done).
-- R5/R8: fill EVIDENCE M4 and A1-A6, run the changed-path/protected/test-count audits (done).
-- R6: commit `docs/reviews/M3.md` unchanged and prove the hashes (done).
-- Gate: run the clean-clone gate through ev.sh and commit the evidence only (done).
+- F2: restore `parse(std::env::args().skip(1))`; correct the R8 ignore check to drop `.skip(`; rerun it.
+- F1: fill the four header sections of `docs/evidence/M4.md`, one map row per R1-R8 and A1-A6.
+- F1: name the final passing R5 block and label the failed attempts honestly in Deviations.
+- F2: update the R8 sentence in `docs/EVIDENCE.md` so it no longer claims `.skip(` is absent.
+- Commit F1/F2 (code unchanged apart from the revert).
+- F3: rerun the exact gate through ev.sh as "M4 gate final round 2".
+- F4: update PROGRESS (gate label, no false done claim, no approval), commit the evidence.
+- F4: verify the gate-HEAD..HEAD diff is only `docs/evidence/M4.md` and `docs/PROGRESS.md`.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.

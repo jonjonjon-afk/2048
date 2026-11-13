@@ -13,9 +13,7 @@ use game2048::shell;
 use game2048::update::App;
 
 fn main() {
-    let mut argv = std::env::args();
-    let _program = argv.next();
-    let args = match parse(argv) {
+    let args = match parse(std::env::args().skip(1)) {
         Ok(args) => args,
         Err(error) => {
             eprintln!("error: {error}");
