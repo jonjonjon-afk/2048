@@ -3,6 +3,16 @@
 > Owned by the coder. Compact state after M14 close-out; the entry point is
 > `docs/HANDOVER.md`.
 
+## M15 plan (round 1)
+1. Commit the reviewer's SPEC §5.6/§8 and `docs/reviews/M15.md` as-is.
+2. R1: `Args.size: Option<(u16,u16)>`, `--size` parse/validate, USAGE row, three unit tests.
+3. R1: `main.rs` passes the size to `frame_text` (default 100x36); two integration tests.
+4. R2: prove the 60x30 path and the 100x36 default against the committed fixtures; no fixture edit.
+5. R3: refresh `docs/HANDOVER.md` (state, count, motion line, command block, anim.rs, proof).
+6. R4: HISTORY M13/M14 rows; README state, controls, commands, architecture, history line.
+7. R5: one count across README/HANDOVER/PROGRESS/EVIDENCE; A12 + M15 labels; links resolve.
+8. R6: `ev.sh` labels R1-R6 with the scope diff and the exact gate on a clean tree.
+
 ## M14 close-out plan (approved, no code)
 1. Set the M14 row to `approved` with the final commit; drop the round-1 gate wording.
 2. Commit the reviewer's `docs/reviews/M14.md` byte-for-byte with this file.
