@@ -2,6 +2,6 @@
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "reviewer",
   "compaction": {
-    "buffer": "80%"
+    "buffer": "20%"
   }
 }
