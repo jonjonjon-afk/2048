@@ -21,7 +21,7 @@ pub mod update;
 pub use action::Action;
 pub use demo::demo_merge_app;
 pub use effects::Effects;
-pub use game::{Board, Direction, Game, Merge, MoveOutcome, SlideOutcome, Spawn};
+pub use game::{Board, Direction, Game, Merge, MoveOutcome, SlideOutcome, Spawn, Track};
 pub use highscore::{
     FileStore, HighScoreError, HighScoreStore, HighScores, MemoryStore, ScoreEntry,
 };

@@ -54,6 +54,15 @@ pub struct Spawn {
     pub value: u32,
 }
 
+/// One tile's journey during a move: its source cell, destination cell and the
+/// value it carried before the merge step (SPEC 5.4, M13).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Track {
+    pub from: usize,
+    pub to: usize,
+    pub value: u32,
+}
+
 /// What a single move did. `moved = false` means no spawn, no score, no RNG use.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveOutcome {
@@ -61,6 +70,8 @@ pub struct MoveOutcome {
     pub score_gained: u64,
     pub merges: Vec<Merge>,
     pub spawned: Option<Spawn>,
+    /// One track per occupied source cell, sorted by `from` ascending.
+    pub tracks: Vec<Track>,
 }
 
 impl MoveOutcome {
@@ -70,6 +81,7 @@ impl MoveOutcome {
             score_gained: 0,
             merges: Vec::new(),
             spawned: None,
+            tracks: Vec::new(),
         }
     }
 }
@@ -81,6 +93,8 @@ pub struct SlideOutcome {
     pub moved: bool,
     pub score_gained: u64,
     pub merges: Vec<Merge>,
+    /// One track per occupied source cell, sorted by `from` ascending.
+    pub tracks: Vec<Track>,
 }
 
 /// A 4x4 board of tile values; zero is an empty cell.
@@ -191,28 +205,48 @@ impl Board {
     pub fn slide(&self, direction: Direction) -> SlideOutcome {
         let mut board = Board::empty();
         let mut merges = Vec::new();
+        let mut tracks = Vec::new();
         let mut score_gained = 0u64;
 
         for line in 0..SIZE {
             let positions = line_positions(line, direction);
-            let values: Vec<u32> = positions
+            // Keep each source cell beside its value so the track records the
+            // value the tile carried *before* the merge step.
+            let sources: Vec<(usize, u32)> = positions
                 .iter()
-                .map(|cell| self.cell(*cell))
-                .filter(|value| *value != 0)
+                .map(|cell| (*cell, self.cell(*cell)))
+                .filter(|(_, value)| *value != 0)
                 .collect();
 
             let mut merged_line = Vec::with_capacity(SIZE);
             let mut cursor = 0;
-            while cursor < values.len() {
-                if cursor + 1 < values.len() && values[cursor] == values[cursor + 1] {
-                    let value = values[cursor] * 2;
+            while cursor < sources.len() {
+                if cursor + 1 < sources.len() && sources[cursor].1 == sources[cursor + 1].1 {
+                    let value = sources[cursor].1 * 2;
                     let cell = positions[merged_line.len()];
                     merges.push(Merge { cell, value });
                     score_gained += u64::from(value);
+                    // Both sources share the destination of the merged tile.
+                    tracks.push(Track {
+                        from: sources[cursor].0,
+                        to: cell,
+                        value: sources[cursor].1,
+                    });
+                    tracks.push(Track {
+                        from: sources[cursor + 1].0,
+                        to: cell,
+                        value: sources[cursor + 1].1,
+                    });
                     merged_line.push(value);
                     cursor += 2;
                 } else {
-                    merged_line.push(values[cursor]);
+                    let cell = positions[merged_line.len()];
+                    tracks.push(Track {
+                        from: sources[cursor].0,
+                        to: cell,
+                        value: sources[cursor].1,
+                    });
+                    merged_line.push(sources[cursor].1);
                     cursor += 1;
                 }
             }
@@ -222,11 +256,16 @@ impl Board {
             }
         }
 
+        // Rows are visited top-to-bottom; a right/down move emits destinations
+        // in reverse order, so sort the tracks by source for every direction.
+        tracks.sort_by_key(|track| track.from);
+
         SlideOutcome {
             board,
             moved: board != *self,
             score_gained,
             merges,
+            tracks,
         }
     }
 }
@@ -349,6 +388,7 @@ impl Game {
             score_gained: slid.score_gained,
             merges: slid.merges,
             spawned,
+            tracks: slid.tracks,
         }
     }
 }
@@ -624,6 +664,117 @@ mod tests {
         assert!(outcome.moved);
         assert!(outcome.spawned.is_some());
         assert_eq!(occupied_after, occupied_before + 1);
+    }
+
+    fn track(from: usize, to: usize, value: u32) -> Track {
+        Track { from, to, value }
+    }
+
+    #[test]
+    fn slide_tracks_a_single_merge() {
+        // G20: row 2 2 0 0 left -> both sources keep their own value and share
+        // the merge destination cell 0.
+        let board = Board::from_rows([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let outcome = board.slide(Direction::Left);
+
+        assert_eq!(
+            outcome.tracks,
+            vec![track(0, 0, 2), track(1, 0, 2)],
+            "G20 slide tracks"
+        );
+        assert_eq!(outcome.board.rows()[0], [4, 0, 0, 0]);
+        assert_eq!(outcome.merges, vec![Merge { cell: 0, value: 4 }]);
+        assert!(outcome.moved);
+    }
+
+    #[test]
+    fn slide_tracks_keep_gaps_and_destination_order() {
+        // G4: 2 0 2 4 left -> 4 4 0 0; the gap closes before the merge and the
+        // 4 lands in the second slot.
+        let board = Board::from_rows([[2, 0, 2, 4], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let outcome = board.slide(Direction::Left);
+
+        // Both 2s merge into cell 0, so they share that destination; the old 4
+        // ends in cell 1 (the review's G4 row listed 1 and 2, which contradicts
+        // the G4 board `4 4 0 0` and the shared-destination rule of G20).
+        assert_eq!(
+            outcome.tracks,
+            vec![track(0, 0, 2), track(2, 0, 2), track(3, 1, 4)]
+        );
+        assert_eq!(outcome.board.rows()[0], [4, 4, 0, 0]);
+        assert_eq!(outcome.score_gained, 4);
+    }
+
+    #[test]
+    fn slide_tracks_a_right_move() {
+        // G7: 2 2 0 0 right -> 0 0 0 4; both sources travel to cell 3 and the
+        // vector is sorted by the source cell, not the travel order.
+        let board = Board::from_rows([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let outcome = board.slide(Direction::Right);
+
+        assert_eq!(
+            outcome.tracks,
+            vec![track(0, 3, 2), track(1, 3, 2)],
+            "tracks ascending by from"
+        );
+        assert_eq!(outcome.board.rows()[0], [0, 0, 0, 4]);
+        assert_eq!(outcome.merges, vec![Merge { cell: 3, value: 4 }]);
+    }
+
+    #[test]
+    fn slide_tracks_a_vertical_merge() {
+        // G8: column 2,2,0,0 up -> cell 0 = 4; the two sources are cells 0 and 4.
+        let board = Board::from_rows([[2, 0, 0, 0], [2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let outcome = board.slide(Direction::Up);
+
+        assert_eq!(outcome.tracks, vec![track(0, 0, 2), track(4, 0, 2)]);
+        assert_eq!(outcome.board.cell(0), 4);
+        assert_eq!(outcome.board.cell(4), 0);
+    }
+
+    #[test]
+    fn slide_tracks_an_unchanged_row() {
+        // G6: 2 4 2 4 already left-aligned; every occupied cell still gets a
+        // track, but nothing moved and no merge happened.
+        let board = Board::from_rows([[2, 4, 2, 4], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let outcome = board.slide(Direction::Left);
+
+        assert_eq!(
+            outcome.tracks,
+            vec![
+                track(0, 0, 2),
+                track(1, 1, 4),
+                track(2, 2, 2),
+                track(3, 3, 4)
+            ]
+        );
+        assert!(!outcome.moved);
+        assert_eq!(outcome.score_gained, 0);
+    }
+
+    #[test]
+    fn every_occupied_cell_gets_exactly_one_track() {
+        for seed in 1..=12u64 {
+            let game = Game::new(seed, 0);
+            let occupied: Vec<usize> = game
+                .board
+                .cells()
+                .iter()
+                .enumerate()
+                .filter_map(|(cell, value)| (*value != 0).then_some(cell))
+                .collect();
+            let tracks = game.board.slide(Direction::Left).tracks;
+
+            assert_eq!(tracks.len(), occupied.len(), "seed {seed} track count");
+            let sources: Vec<usize> = tracks.iter().map(|track| track.from).collect();
+            assert_eq!(
+                sources, occupied,
+                "seed {seed} sources are the occupied cells"
+            );
+            for pair in sources.windows(2) {
+                assert!(pair[0] < pair[1], "seed {seed} sources are ascending");
+            }
+        }
     }
 
     #[test]

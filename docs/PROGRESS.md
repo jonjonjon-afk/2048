@@ -3,6 +3,15 @@
 > Owned by the coder. Compact final state after M12; the entry point is
 > `docs/HANDOVER.md`.
 
+## M13 plan (round 1)
+1. R1: `Track` on `SlideOutcome`/`MoveOutcome`, one per source cell, sorted; 6 game tests.
+2. R2: new pure `src/anim.rs` (progress, `Slide::anchor`, jiggle table, clamp); 6 tests.
+3. R3: `App` slide state, 140 ms landing, move lock, restart; 5 tests.
+4. R4/R5: renderer trick for moving cards, opaque plaque and jiggle offsets; 7 tests.
+5. R6: `--demo-slide`, `demo_slide_app`, four fixtures, e2e line, HANDOVER; 4 tests.
+6. R7: overlays wait for the landing; 3 tests.
+7. R8: fmt/clippy/tests, gate through `ev.sh`, EVIDENCE/PROGRESS updates.
+
 ## Current state
 - All milestones M0-M11 are approved; the game is feature-complete for the SPEC.
 - M12 (lean handover) is documentation/repo cleanup only. The per-milestone
