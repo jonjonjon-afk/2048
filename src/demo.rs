@@ -15,14 +15,6 @@ use crate::update::App;
 /// Duration of one animation frame in the `--frame N` contract.
 pub const FRAME_MILLIS: u64 = 16;
 
-/// Seed for the `--demo-slide` spawn.
-///
-/// The synthetic board and its one `Down` move are fixed; the only random draw
-/// is the post-move spawn. The M13 review pins that spawn at cell 11 (value 2).
-/// Under the SPEC 5.2 draw order seed 42 would spawn at cell 9, so the demo
-/// uses the smallest seed that reproduces the reviewed board.
-pub const DEMO_SLIDE_SEED: u64 = 7;
-
 /// The synthetic `--demo-slide` board (SPEC 8, M13).
 pub const DEMO_SLIDE_BOARD: [[u32; 4]; 4] =
     [[0, 0, 2, 0], [0, 0, 2, 0], [4, 0, 0, 0], [8, 2, 0, 0]];
@@ -44,12 +36,13 @@ pub fn demo_merge_app(frame: u64) -> App {
 
 /// The `--demo-slide` app advanced to animation frame `frame`.
 ///
-/// The synthetic board gets one `Down` move at t = 0; the slide is then driven
-/// in 16 ms steps so frames 9 and later are measured from the landing, not
-/// from a single long step that would swallow the jiggle's start.
+/// The synthetic board gets one `Down` move at t = 0 with the normal demo seed
+/// (SPEC 5.6); the only random draw is the post-move spawn. The slide is then
+/// driven in 16 ms steps so frames 9 and later are measured from the landing,
+/// not from a single long step that would swallow the jiggle's start.
 pub fn demo_slide_app(frame: u64) -> App {
     let board = Board::from_rows(DEMO_SLIDE_BOARD);
-    let mut app = App::new(Game::from_state(board, 0, 0, DEMO_SLIDE_SEED));
+    let mut app = App::new(Game::from_state(board, 0, 0, DEMO_SEED));
     app.update(Some(Action::Move(Direction::Down)), Duration::ZERO);
     for _ in 0..frame {
         app.update(None, Duration::from_millis(FRAME_MILLIS));
@@ -102,12 +95,15 @@ mod tests {
         assert_eq!(at_nine.effects.elapsed(), Duration::from_millis(144));
 
         let settled = at_three.game.board;
-        assert_eq!(settled.cell(8), 4);
-        assert_eq!(settled.cell(11), 2);
+        assert_eq!(settled.cell(8), 4, "the merged 4");
         assert_eq!(settled.cell(12), 8);
         assert_eq!(settled.cell(13), 2);
         assert_eq!(settled.cell(14), 4);
         assert_eq!(at_three.game.score, 4);
+        // F1: no spawn cell is pinned; the derived spawn sits on its own board
+        // cell with its own value.
+        let spawn = at_three.game.last_spawn.expect("the demo move spawns");
+        assert_eq!(settled.cell(spawn.cell), spawn.value);
     }
 
     #[test]

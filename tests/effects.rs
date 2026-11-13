@@ -962,25 +962,34 @@ fn the_merged_value_waits_for_the_landing() {
 fn the_spawned_tile_is_hidden_during_the_slide() {
     let during = demo_slide_app(3);
     let spawn = during.game.last_spawn.expect("the demo move spawns");
-    assert_eq!(spawn.cell, 11, "the pinned demo spawn");
+    let origin_x = (spawn.cell % 4) as i32 * 10;
+    let origin_y = (spawn.cell / 4) as i32 * 6;
 
     let buffer = frame_buffer(&during, WIDTH, HEIGHT);
-    for y in 13..=15 {
-        for x in 31..=37 {
-            let symbol = buffer[(x, y)].symbol().chars().next().unwrap_or(' ');
+    for y in origin_y..origin_y + 5 {
+        for x in origin_x..origin_x + 9 {
+            let symbol = play_cell(&buffer, x, y);
             assert!(
                 !symbol.is_ascii_digit(),
-                "the empty slot at ({x},{y}) shows {symbol:?} during the slide"
+                "the spawn slot at ({x},{y}) shows {symbol:?} during the slide"
             );
         }
     }
 
+    // F1: derive the spawn cell and its label position from `last_spawn` rather
+    // than pinning a demo seed that moves the tile. After the landing the value
+    // sits on card row 2 under the `(7 - digits) / 2` centring.
     let after = frame_buffer(&demo_slide_app(9), WIDTH, HEIGHT);
-    assert_eq!(
-        play_cell(&after, 34, 14),
-        '2',
-        "the spawned tile is drawn after the landing"
-    );
+    let value = spawn.value.to_string();
+    let padding = (7 - value.chars().count() as i32) / 2;
+    for (offset, digit) in value.chars().enumerate() {
+        let x = origin_x + 1 + padding + offset as i32;
+        assert_eq!(
+            play_cell(&after, x, origin_y + 2),
+            digit,
+            "the spawned tile is drawn after the landing"
+        );
+    }
 }
 
 #[test]
