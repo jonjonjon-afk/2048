@@ -952,9 +952,9 @@ fn the_merged_value_waits_for_the_landing() {
 
     let after = frame_buffer(&demo_slide_app(9), WIDTH, HEIGHT);
     assert_eq!(
-        play_cell(&after, 26, 20),
+        play_cell(&after, 24, 18),
         '4',
-        "the merged 4 appears at the landing with dx = +2"
+        "the merged 4 appears at the landing, two rows up along the merge axis"
     );
 }
 
