@@ -36,10 +36,14 @@
 
 ## Current state
 - M0-M14 are approved; M15 (the `--size` 60x30 capture path and this docs
-  refresh) is in progress and its gate result is recorded below.
+  refresh) is complete and awaiting review: its gate exits 0, proof below.
 - `make check`: **190 tests, 0 failed** (124 lib + 17 CLI + 41 effects + 1
   restart + 7 score). `make e2e` is clean against the four slide and six older
   fixtures.
+- M15 gate: **exit 0** at commit `8d37eef` (clean source tree; only
+  `docs/evidence/M15.md` was untracked): `make check` (190/0), the seed-42 dump,
+  the default 100x36 frame, the `--size 60x30` slide diff and `make e2e`. Proof:
+  `docs/evidence/M15.md` "M15 gate".
 - M14 gate: **exit 0** at commit `0bd8448` (clean source tree): `make check`,
   the seed-42 dump, the frame 3/9/12 slide diffs and `make e2e`. Proof:
   `docs/evidence/M14.md` "M14 gate".
@@ -67,7 +71,7 @@
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
 | M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | docs/evidence/M13.md |
 | M14 | Jiggle along the merge axis | approved | `da033c1` | docs/evidence/M14.md |
-| M15 | 60x30 capture path and docs refresh | gate passed, awaiting review | `af297aa` (source) | docs/evidence/M15.md |
+| M15 | 60x30 capture path and docs refresh | gate exit 0, awaiting review | `8d37eef` | docs/evidence/M15.md |
 
 ## M12 checklist
 | ID | State |
