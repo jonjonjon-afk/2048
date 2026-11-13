@@ -70,8 +70,18 @@ fn main() {
         }
     };
 
-    if let Err(error) = outcome {
-        eprintln!("error: {error}");
-        std::process::exit(1);
+    match outcome {
+        // `run_live`/`run_loop` have returned, so the terminal guard has
+        // already restored raw mode and the alternate screen: printing now
+        // cannot corrupt the TUI. A failed save is a warning, not an error.
+        Ok(session) => {
+            for warning in session.into_warnings() {
+                eprintln!("{warning}");
+            }
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            std::process::exit(1);
+        }
     }
 }

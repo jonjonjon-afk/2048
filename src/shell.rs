@@ -24,6 +24,26 @@ pub const MAX_DT_MILLIS: u64 = 250;
 pub struct Shell<S: HighScoreStore> {
     pub app: App,
     store: S,
+    /// Stderr lines queued for `main`; written only after the terminal is restored.
+    warnings: Vec<String>,
+}
+
+/// What an interactive session leaves for the binary entry point to print.
+#[derive(Clone, Debug, Default)]
+pub struct SessionOutcome {
+    warnings: Vec<String>,
+}
+
+impl SessionOutcome {
+    /// Warnings to write to stderr after the terminal guard has restored the screen.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+
+    /// Consume the outcome and return the queued warning lines.
+    pub fn into_warnings(self) -> Vec<String> {
+        self.warnings
+    }
 }
 
 impl<S: HighScoreStore> Shell<S> {
@@ -35,7 +55,11 @@ impl<S: HighScoreStore> Shell<S> {
 
     /// Wrap an existing application state; used by tests and previews.
     pub fn from_app(app: App, store: S) -> Self {
-        Self { app, store }
+        Self {
+            app,
+            store,
+            warnings: Vec::new(),
+        }
     }
 
     /// The store behind this shell, for assertions and diagnostics.
@@ -43,12 +67,21 @@ impl<S: HighScoreStore> Shell<S> {
         &self.store
     }
 
+    /// Warning lines queued so far. The shell never prints; `main` does.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+
     /// Apply one action and perform the effects the update asked for.
     pub fn apply(&mut self, action: Option<Action>, dt: Duration) {
         for effect in self.app.update(action, dt) {
             match effect {
                 Effect::SaveBest(score) => {
-                    if self.store.save(score).is_err() {
+                    if let Err(error) = self.store.save(score) {
+                        // One line per session: a failed save must not spam stderr.
+                        if self.warnings.is_empty() {
+                            self.warnings.push(format!("warning: {error}"));
+                        }
                         self.app.report_save_failure();
                     }
                 }
@@ -58,16 +91,16 @@ impl<S: HighScoreStore> Shell<S> {
 }
 
 /// Run the interactive game until the player quits.
-pub fn run_live<S: HighScoreStore>(store: S, seed: u64, fps: u32) -> io::Result<()> {
+pub fn run_live<S: HighScoreStore>(store: S, seed: u64, fps: u32) -> io::Result<SessionOutcome> {
     run_loop(Shell::start(store, seed), fps)
 }
 
 /// Run the interactive game from an already-built application state (demo mode).
-pub fn run_live_app<S: HighScoreStore>(app: App, store: S, fps: u32) -> io::Result<()> {
+pub fn run_live_app<S: HighScoreStore>(app: App, store: S, fps: u32) -> io::Result<SessionOutcome> {
     run_loop(Shell::from_app(app, store), fps)
 }
 
-fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<()> {
+fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<SessionOutcome> {
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard::new(ratatui::restore);
     let frame = Duration::from_secs(1) / fps.max(1);
@@ -92,7 +125,10 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<()> 
         shell.apply(action, elapsed);
     }
 
-    Ok(())
+    // `_guard` is dropped here, before the caller can print the queued warning.
+    Ok(SessionOutcome {
+        warnings: shell.warnings,
+    })
 }
 
 /// Enter the real terminal, draw a few frames, restore and exit.
@@ -196,6 +232,48 @@ mod tests {
         shell.apply(Some(Action::Quit), Duration::from_millis(16));
 
         assert!(shell.app.quit);
+        assert_eq!(shell.store().saves, vec![1234]);
+    }
+
+    #[test]
+    fn quit_save_failure_is_reported_once() {
+        let mut shell = Shell::from_app(App::new(Game::new(42, 0)), RecordingStore::failing());
+
+        shell.apply(Some(Action::Quit), Duration::ZERO);
+
+        assert!(shell.app.quit, "a failed save must not trap the player");
+        assert_eq!(
+            shell.warnings().len(),
+            1,
+            "exactly one warning line is queued"
+        );
+        let warning = &shell.warnings()[0];
+        assert!(
+            warning.starts_with("warning: "),
+            "warning must be prefixed for stderr: {warning}"
+        );
+        assert!(
+            warning.contains("no default data directory"),
+            "warning must carry the store error: {warning}"
+        );
+
+        // Further failed saves in the same session do not queue more lines.
+        shell.apply(None, Duration::from_millis(16));
+        assert_eq!(shell.warnings().len(), 1);
+    }
+
+    #[test]
+    fn clean_quit_reports_no_warning() {
+        let game = Game::from_state(Board::empty(), 1234, 0, 42);
+        let mut shell = Shell::from_app(App::new(game), RecordingStore::new(0));
+
+        shell.apply(Some(Action::Quit), Duration::ZERO);
+
+        assert!(shell.app.quit);
+        assert!(
+            shell.warnings().is_empty(),
+            "a successful save has no warning"
+        );
         assert_eq!(shell.store().saves, vec![1234]);
     }
 

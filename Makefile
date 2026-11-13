@@ -11,15 +11,18 @@ check:
 run:
 	$(CARGO) run --release
 
-# Seeded demo mode arrives with the TUI in M2/M3.
+# Seeded demo mode with the plasma and merge effects, in-memory score.
 demo:
 	$(CARGO) run --release -- --demo --seed 42 --no-persist
 
-# M3 end-to-end: the real binary's dump/render output plus the CLI, storage and
-# pinned demo-merge frame captures under docs/evidence/M3/.
+# M4 end-to-end: every integration suite (cli, effects, restart) plus three
+# deterministic captures, each diffed against its committed fixture.
 e2e:
-	$(CARGO) test --test cli -- --nocapture
-	mkdir -p docs/evidence/M3
-	$(CARGO) run --quiet -- --render-once --demo-merge --frame 4 --no-persist > docs/evidence/M3/frame_04.txt
-	$(CARGO) run --quiet -- --render-once --demo-merge --frame 14 --no-persist > docs/evidence/M3/frame_14.txt
-	$(CARGO) run --quiet -- --render-once --demo-merge --frame 24 --no-persist > docs/evidence/M3/frame_24.txt
+	$(CARGO) test --tests
+	mkdir -p docs/evidence/M4
+	$(CARGO) run --quiet -- --dump --seed 42 > docs/evidence/M4/dump_seed42.txt
+	$(CARGO) run --quiet -- --render-once --seed 42 --no-persist > docs/evidence/M4/frame_100x36_seed42.txt
+	$(CARGO) run --quiet -- --render-once --demo-merge --frame 14 --no-persist > docs/evidence/M4/frame_100x36_demo_merge_14.txt
+	diff -u tests/fixtures/dump_seed42.txt docs/evidence/M4/dump_seed42.txt
+	diff -u tests/fixtures/frame_100x36_seed42.txt docs/evidence/M4/frame_100x36_seed42.txt
+	diff -u tests/fixtures/effect_100x36_frame_14.txt docs/evidence/M4/frame_100x36_demo_merge_14.txt

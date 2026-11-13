@@ -33,7 +33,7 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 └───────────────────────────────────────────────────────────────┘
 ```
 - Header: title left, `SCORE` and `BEST` right; the best flashes when a new record is set.
-- Board: 4 x 4 rounded cards, each 8 cells wide x 4 rows tall at 100x36, scaled to fit larger terminals. Empty cells are dim outlines.
+- Board: 4 x 4 rounded cards, each 8 cells wide x 4 rows tall, centred; the cards keep this fixed size on terminals larger than 100x36 (the extra space shows the plasma). Empty cells are dim outlines.
 - Footer: key legend and a transient storage warning slot.
 - Overlays: win (`2048!` + continue/restart) and game over (final score + restart).
 - Too-small terminal: a centred notice with the required size; no board rendering.
