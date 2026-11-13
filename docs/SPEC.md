@@ -45,6 +45,7 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - Play-area frame: 41 x 25 cells (a 39 x 23 board plus one border cell on every side), centred with floor division. At 100x36 it starts at column 29, row 5; at 60x30 at column 9, row 2. It never overlaps the header row, the footer or the outer frame.
 - Board: 4 x 4 rounded cards, each 9 cells wide x 5 rows tall, one blank cell between neighbours. The cards keep this fixed size on larger terminals; the extra space shows the plasma. Empty cells are dim outlines.
 - Tile value: bold, on the middle inner row of its card (card row 2 of 5) and horizontally centred inside the 7-cell inner width with left padding `(7 - digits) / 2`.
+- Moving card (M13): while a tile slides, its whole 9x5 rounded card is drawn at a rounded-offset position inside the 39x23 board, with its border in the tile colour, its interior filled with the renderer background and its value on card row 2 with the same centring. Nothing is ever drawn outside the 39x23 board.
 - `SCORE` and `BEST`: on the play-area frame's top edge, `SCORE <n>` then three spaces then `BEST <n>`, starting two cells after the top-left corner; the rest of the edge is `─`. Both use the header style; the `BEST` segment pulses when a new record is set. The outer header shows the title only.
 - The `SCORE` number counts up to its new value over 450 ms with an ease-out (section 5.7); `BEST` changes immediately. The count is display only and never changes the rules, the score or the RNG.
 - Footer: key legend and a transient storage warning slot.
@@ -99,6 +100,9 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - **Tile flash**: merged tiles brighten for **180 ms**.
 - **Spawn pop**: newly spawned tiles brighten for **120 ms**.
 - **New best**: the `BEST` value pulses for **600 ms**.
+- **Tile slide (M13)**: after a move that changes the board, every source tile travels from its old card slot to its new one. One `Track { from, to, value }` per occupied source cell. Duration `SLIDE_MILLIS = 140`; `x = age_ms as f64 / 140.0` clamped to `1.0`, ease-out **quadratic** progress `p = 1.0 - (1.0 - x) * (1.0 - x)`. A card's top-left in play-area cells is `round(from_x + (to_x - from_x) * p)` and `round(from_y + (to_y - from_y) * p)` with `f64::round`, where `from_x = (from % 4) * 10`, `from_y = (from / 4) * 6` and the `to_*` values follow the same two formulas (cell pitch 10 x 6). While the slide runs the settled board is not drawn: the 16 slots are empty cards, the effect layer is drawn, then each moving card over them. The spawned tile and the merged value appear only when the slide ends. A new move while a slide runs is ignored (section 5.5). `R` clears the slide.
+- **Merge jiggle (M13)**: every merged cell of the move wobbles for `JIGGLE_MILLIS = 240` starting at the slide's end. With `k = age_ms / 40` (integer division) the horizontal offset is `[2, -2, 1, -1, 0, 0][k]` columns and the vertical offset is 0; at `age >= 240` there is no offset. The card and its label move together; the anchor is clamped to `x in 0..=30` and `y in 0..=18` so a wall merge never draws outside the board. A new landing replaces any wobble that is still running.
+- **Effect start (M13)**: the merge ripple, sparks, tile flash, merge jiggles and spawn pop of a move start when that move's slide ends, not on the keypress. The update that ends the slide leaves them at age 0 and does not advance them further (the leftover of that step is dropped). The `BEST` pulse and the score count still start with the keypress (sections 5.1 and 5.7). A slide that is never started (a blocked move, or the pinned demo captures of section 5.6) starts its effects immediately.
 - Animations update from an injected `dt`; core logic and tests never read the wall clock. The `--frame N` contract uses exactly 16 ms per step (`elapsed = N * 16 ms`).
 - Effects must never change the game state or the timing of the RNG.
 
@@ -116,6 +120,7 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 | any move key while game over | ignored |
 | any move key while the win overlay is visible | ignored until dismissed |
 | any move key while the table overlay is open during play | ignored; H closes it, R and Q still work |
+| any move key while a slide is playing (M13) | ignored until the 140 ms slide ends; R, Q, H and Space/Enter still work |
 
 Name entry (M8), shown after game over when the score qualifies for the table:
 | Key | Action |
@@ -138,6 +143,7 @@ A typed name is stored and displayed uppercase. Name entry opens only on the gam
 | `--frame <n>` | fixed animation frame for `--render-once` (16 ms steps) |
 | `--demo` | seeded showcase board, in-memory score, some effects triggered |
 | `--demo-merge` | demo board plus an immediate merge effect for captures |
+| `--demo-slide` | synthetic board (section 8 M13) plus one `Down` move that slides and merges, for motion captures |
 | `--no-persist` | force the in-memory high-score store |
 | `--self-test-tui` | enter the real TUI, draw 120 frames at the live pacing, restore, print `self-test-tui: 120 frames in <secs>s (<fps> fps)` on stdout and exit 0 |
 | `--fps <n>` | live frame rate (default 60) |
@@ -192,6 +198,9 @@ Source: standard 2048 rules, hand-computed below. Tests assert these exactly.
 | G17 | a full table whose 10th score is 50; game over with 0, 50 and 51 | 0 and 50 do not qualify; 51 does | hand-computed from 5.3 |
 | G18 | ripple source at board cell 0 (play-area `(4.5, 2.5)`), 100 ms | `(7,1)` is on the front (`d = sqrt(2.5^2 + 3^2) = 3.905`); `(0,4)` is not (`d = sqrt(4.5^2 + 3^2) = 5.408`); a Chebyshev front would light `(0,4)` and miss `(7,1)` | hand-computed from 5.4 |
 | G19 | ripple source at board cell 0, 100 ms | play cell `(5,5)` is top-half only: its top-half centre `(5, 4.75)` has `d = sqrt(0.5^2 + 4.5^2) = 4.528` (on), while the cell centre `(5,5)` has `d = sqrt(0.5^2 + 5^2) = 5.025` (off); the bottom half is off too | hand-computed from 5.4 |
+| G20 | row `2 2 0 0`, move left: slide tracks | `from 0 to 0 value 2`, `from 1 to 0 value 2` (both sources keep their own value and share the merge destination) | hand-computed from 5.4 |
+| G21 | slide track `from` cell 0 to cell 3 (30 columns), ages 0 / 35 / 70 / 105 / 140 ms | `x = 0`, `13`, `23`, `28`, `30` at `y = 0`: `p = 1-(1-x)^2` gives `0`, `0.4375`, `0.75`, `0.9375`, `1`; `30*0.4375 = 13.125 -> 13`, `30*0.75 = 22.5 -> 23` (round half away from zero), `30*0.9375 = 28.125 -> 28` | hand-computed from 5.4 |
+| G22 | merge jiggle at ages 0 / 40 / 80 / 120 / 160 / 200 / 240 ms | `dx = +2, -2, +1, -1, 0, 0`, no offset: `age / 40` indexes `[2,-2,1,-1,0,0]` and `age >= 240` clears it | hand-computed from 5.4 |
 
 ## 7. Data sources and modes
 | Source | What it provides | Purpose |
@@ -222,6 +231,7 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **M10 Round merge ripple (post-handover).** Replace the Chebyshev (square) wavefront with the aspect-corrected Euclidean circle of section 5.4; keep the radius, 900 ms lifetime, ±0.75 window, nine wall images, 0.55 reflection factor and colour fade, and update the pinned cells, effect fixtures and demo-merge capture. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && make e2e'` exits 0.
 - **M11 Half-block ripple (post-handover).** Draw the round front in half-block subcells (section 5.4): sample `y ± 0.25`, render `▀`/`▄` with two colours per cell, keep the metric/radius/lifetime/window/walls/0.55/fade, and regenerate the effect fixtures and demo-merge capture. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▀" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▄" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && make e2e'` exits 0.
 - **M12 Lean handover.** Consolidate the historical docs into `docs/HANDOVER.md`, `docs/HISTORY.md` (one line per milestone M0-M11) and one fresh `docs/evidence/ACCEPTANCE.md` for A1-A11; delete the per-milestone evidence/reviews and generated captures; ignore the regenerated `docs/evidence/e2e/`; trim `EVIDENCE.md`, `PROGRESS.md`, `OPEN_QUESTIONS.md` and `api-notes.md`. No application code, tests, fixtures, Makefile or Cargo changes. *Gate:* `bash -o pipefail -c 'make check && test -f docs/HANDOVER.md && test -f docs/HISTORY.md && test -f docs/evidence/ACCEPTANCE.md && test -z "$(ls docs/evidence/M{0..11}.md 2>/dev/null)" && test -z "$(ls docs/reviews/M{0..11}.md 2>/dev/null)" && rm -rf /tmp/2048-clean && git clone . /tmp/2048-clean && cd /tmp/2048-clean && make check && make e2e && test -z "$(git status --porcelain)"'` exits 0.
+- **M13 Slide and fusion jiggle (post-handover).** Expose one slide track per occupied source cell, play the 140 ms ease-out card slide of section 5.4 (move keys ignored while it runs), start the merge/spawn effects at the landing, and wobble each merged card for 240 ms; overlays wait for the slide. Add `--demo-slide` on the synthetic board `[[0,0,2,0],[0,0,2,0],[4,0,0,0],[8,2,0,0]]` with one `Down` move, and the motion fixtures. The six existing fixtures stay byte-identical. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && cargo run --quiet -- --render-once --demo-slide --frame 3 --no-persist | diff -q - tests/fixtures/slide_100x36_frame_03.txt && cargo run --quiet -- --render-once --demo-slide --frame 9 --no-persist | diff -q - tests/fixtures/slide_100x36_frame_09.txt && cargo run --quiet -- --render-once --demo-slide --frame 12 --no-persist | diff -q - tests/fixtures/slide_100x36_frame_12.txt && make e2e'` exits 0.
 
 ## 9. Acceptance checklist (IDs referenced in EVIDENCE.md)
 - **A1** At 100x36 and 60x30 the UI renders without panic, overlap or truncation (snapshot tests + reported dimensions).
@@ -235,6 +245,7 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **A9** The displayed score follows the G14/G15 values, re-targets from the shown value, never exceeds the real score, resets on restart, and leaves `BEST` immediate while `--dump` prints the real score (M6).
 - **A10** The merge ripple is visible, deterministic, round rather than square (aspect-corrected Euclidean), drawn in half-block subcells, reflects off at least one play-area wall and fades out before it expires (M7, round crest M10, subcell M11).
 - **A11** A named score entered after game over is stored, reloaded and displayed in the table after a restart (M8).
+- **A12** Tiles glide from their old slot to their new one on the 140 ms ease-out curve, move keys are ignored during the slide, merge/spawn effects start at the landing, and each merged card jiggles for 240 ms with the documented offsets; the pinned demo captures stay settled (M13).
 
 ## 10. Final report format
 (1) Filled `docs/EVIDENCE.md`; (2) list of anything unverified or blocked, with reasons; (3) exact steps to run the game and where the high score is stored.
