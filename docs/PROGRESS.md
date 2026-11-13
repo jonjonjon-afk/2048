@@ -19,14 +19,15 @@
 | M6 | Score count-up | gate passed | awaiting verdict (round 1) | docs/evidence/M6.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- M6 round 1, R1: new `src/score.rs` (`ScoreCount`, `SCORE_COUNT_MILLIS = 450`, f64 ease-out) + G14/clamp unit tests.
-- M6 R2/R6: `App` owns the count; retarget from the shown value after the action, advance by the same `dt`, restart snaps to 0.
-- M6 R3: `demo_merge_app` already passes the same `dt` to update; add the frame-4/14/24/30 test and regenerate the three effect fixtures.
-- M6 R4: panel edge and game-over overlay read `App::shown_score()`; the grep over `src/render.rs` is clean.
-- M6 R5: BEST keeps `game.best` and its 600 ms pulse; test best 4 / shown 1 at 64 ms.
-- M6 R7: dump keeps the real score; test `score_count_does_not_touch_the_game`; protected-module diff empty.
-- M6 R8: `make check`, `make e2e` (three runs), evidence through `scripts/ev.sh`, EVIDENCE A9 row, SPEC gate.
-- Done this round: all eight requirements; gate exit 0 ("M6 gate"); stop and wait for the audit.
+- M7 round 1, R1/R7: replace `Shockwave` with `Ripple` in `src/effects.rs` (float radius, 9 images, ±0.75, 0.55^walls) and delete the old ring code.
+- M7 R4: one ripple per merge keeps its own cell/value; sparks/flash/pop/pulse lifetimes untouched.
+- M7 R2/R3: draw the ripple after cards, before labels; amplitudes via `glyph_at`; expire at 900 ms.
+- M7 R1/R2/R3 pins: integration tests read play-area cells at `panel.left+1+x`, `panel.top+1+y`.
+- M7 R5: frame 1/2 keep the `4` digit at board cell (4,2); frame 14 shows the ripple at (13,10).
+- M7 R6: regenerate the three effect fixtures and the demo-merge capture from the binary; keep frame 14 ▓/▒.
+- M7 R7: no `game.score` in render, protected diff empty, no deps, no `Shockwave`/`RING_SYMBOLS` remnants.
+- M7 R8: `scripts/ev.sh` evidence, EVIDENCE A10 row, api-notes FU1 rows, PROGRESS without an approval claim.
+- Done this round: all eight requirements; gate exit 0 ("M7 gate"); stop and wait for the audit.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
