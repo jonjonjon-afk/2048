@@ -13,6 +13,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{Frame, Terminal};
 
 use crate::effects::{Ripple, Spark};
+use crate::highscore::NAME_MAX_LEN;
 use crate::update::App;
 
 /// Width of one board card in columns.
@@ -35,6 +36,20 @@ pub const LABEL_WIDTH: u16 = CARD_WIDTH - 2;
 pub const MIN_WIDTH: u16 = 60;
 /// Smallest supported terminal height.
 pub const MIN_HEIGHT: u16 = 30;
+/// Smallest terminal width that shows the score panel (SPEC §4, M8).
+pub const PANEL_MIN_WIDTH: u16 = 100;
+/// Width of the `HIGH SCORES` panel, including its border (SPEC §4, M8).
+pub const HIGH_SCORE_PANEL_WIDTH: u16 = 20;
+/// Height of the `HIGH SCORES` panel, including its border (SPEC §4, M8).
+pub const HIGH_SCORE_PANEL_HEIGHT: u16 = 12;
+/// Width of the table overlay, including its border (SPEC §4, M8).
+pub const TABLE_OVERLAY_WIDTH: u16 = 26;
+/// Height of the table overlay, including its border (SPEC §4, M8).
+pub const TABLE_OVERLAY_HEIGHT: u16 = 15;
+/// Width of the name-entry overlay, including its border (SPEC §4, M8).
+pub const ENTRY_OVERLAY_WIDTH: u16 = 34;
+/// Height of the name-entry overlay, including its border (SPEC §4, M8).
+pub const ENTRY_OVERLAY_HEIGHT: u16 = 7;
 
 const BACKGROUND: Color = Color::Rgb(6, 8, 20);
 const ACCENT: Color = Color::Rgb(0, 255, 200);
@@ -82,6 +97,44 @@ pub fn board_layout(width: u16, height: u16) -> BoardLayout {
     }
 }
 
+/// The 20x12 `HIGH SCORES` panel beside the play area (SPEC §4, M8).
+///
+/// Its left edge sits two blank columns right of the play-area frame and its
+/// top edge on the play area's top row. Terminals narrower than 100 columns
+/// show no panel.
+pub fn high_score_panel_rect(width: u16, height: u16) -> Option<Rect> {
+    if width < PANEL_MIN_WIDTH || height < MIN_HEIGHT {
+        return None;
+    }
+    let play = panel_layout(width, height);
+    Some(Rect::new(
+        play.left + PANEL_WIDTH + 2,
+        play.top,
+        HIGH_SCORE_PANEL_WIDTH,
+        HIGH_SCORE_PANEL_HEIGHT,
+    ))
+}
+
+/// The centred 26x15 table overlay (SPEC §4, M8).
+pub fn table_overlay_rect(width: u16, height: u16) -> Rect {
+    Rect::new(
+        width.saturating_sub(TABLE_OVERLAY_WIDTH) / 2,
+        height.saturating_sub(TABLE_OVERLAY_HEIGHT) / 2,
+        TABLE_OVERLAY_WIDTH,
+        TABLE_OVERLAY_HEIGHT,
+    )
+}
+
+/// The centred 34x7 name-entry overlay (SPEC §4, M8).
+pub fn entry_overlay_rect(width: u16, height: u16) -> Rect {
+    Rect::new(
+        width.saturating_sub(ENTRY_OVERLAY_WIDTH) / 2,
+        height.saturating_sub(ENTRY_OVERLAY_HEIGHT) / 2,
+        ENTRY_OVERLAY_WIDTH,
+        ENTRY_OVERLAY_HEIGHT,
+    )
+}
+
 /// Draw one complete frame.
 pub fn render(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -97,6 +150,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     render_header(frame, area);
     render_panel(frame, area, app);
+    render_high_scores(frame, area, app);
     render_board_cards(frame, area, app);
     render_effects(frame, area, app);
     render_board_labels(frame, area, app);
@@ -192,6 +246,47 @@ fn render_panel(frame: &mut Frame, area: Rect, app: &App) {
             .buffer_mut()
             .set_style(Rect::new(x, layout.top, width, 1), best_pulse_style());
     }
+}
+
+/// One table row: `{name:<10} {score:>6}` (SPEC §4, M8).
+fn row_text(name: &str, score: u64) -> String {
+    format!("{name:<10} {score:>6}")
+}
+
+/// Draw the wide-terminal `HIGH SCORES` panel, when it is visible.
+///
+/// The block is opaque (Rgb foreground and background on every cell) so the
+/// plasma never shows through the table.
+fn render_high_scores(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(rect) = high_score_panel_rect(area.width, area.height) else {
+        return;
+    };
+    let base = Style::new().fg(MUTED).bg(BACKGROUND);
+    frame.buffer_mut().set_style(rect, base);
+
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(base)
+        .style(Style::new().bg(BACKGROUND))
+        .title(
+            Line::from("HIGH SCORES").style(
+                Style::new()
+                    .fg(ACCENT)
+                    .bg(BACKGROUND)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        );
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+
+    let rows: Vec<Line<'_>> = (0..HIGH_SCORE_PANEL_HEIGHT as usize - 2)
+        .map(|index| match app.table.entries().get(index) {
+            Some(entry) => Line::from(row_text(&entry.name, entry.score)),
+            None => Line::from(""),
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(rows).style(base), inner);
 }
 
 fn cell_origin(layout: BoardLayout, cell: usize) -> Rect {
@@ -344,7 +439,9 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_overlay(frame: &mut Frame, area: Rect, app: &App) {
-    if app.game.won {
+    if app.entry_active() {
+        render_entry_overlay(frame, area, app);
+    } else if app.game.won {
         overlay(
             frame,
             area,
@@ -356,6 +453,8 @@ fn render_overlay(frame: &mut Frame, area: Rect, app: &App) {
             ],
             ACCENT,
         );
+    } else if table_overlay_visible(area, app) {
+        render_table_overlay(frame, area, app);
     } else if app.game.game_over {
         overlay(
             frame,
@@ -368,6 +467,105 @@ fn render_overlay(frame: &mut Frame, area: Rect, app: &App) {
             WARNING,
         );
     }
+}
+
+/// The table-overlay toggle rule for the draw side.
+///
+/// The panel replaces the overlay at 100+ columns; below that the overlay is
+/// drawn whenever it is toggled on (and automatically after game over).
+fn table_overlay_visible(area: Rect, app: &App) -> bool {
+    area.width < PANEL_MIN_WIDTH && app.table_shown
+}
+
+/// The centred 26x15 table overlay (SPEC §4, M8).
+fn render_table_overlay(frame: &mut Frame, area: Rect, app: &App) {
+    let rect = table_overlay_rect(area.width, area.height);
+    let base = Style::new().fg(MUTED).bg(BACKGROUND);
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(base)
+        .style(Style::new().bg(BACKGROUND))
+        .title(
+            Line::from("HIGH SCORES").style(
+                Style::new()
+                    .fg(ACCENT)
+                    .bg(BACKGROUND)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        );
+
+    let mut lines: Vec<Line<'_>> = (0..HIGH_SCORE_PANEL_HEIGHT as usize - 2)
+        .map(|index| match app.table.entries().get(index) {
+            Some(entry) => Line::from(row_text(&entry.name, entry.score)),
+            None => Line::from(""),
+        })
+        .collect();
+    if app.game.game_over {
+        // Last two content rows: the final score and the restart/close legend.
+        lines.push(Line::from(""));
+        lines.push(Line::from(format!("SCORE {}", app.shown_score())));
+        lines.push(Line::from("R restart   H close"));
+    } else {
+        // During play the bottom content row is the close legend.
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+        lines.push(Line::from("H close"));
+    }
+
+    render_framed(frame, rect, block, Paragraph::new(lines).style(base));
+}
+
+/// The centred 34x7 `NEW HIGH SCORE` entry overlay (SPEC §4, M8).
+fn render_entry_overlay(frame: &mut Frame, area: Rect, app: &App) {
+    let rect = entry_overlay_rect(area.width, area.height);
+    let accent = Style::new().fg(ACCENT).bg(BACKGROUND);
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(accent)
+        .style(Style::new().bg(BACKGROUND))
+        .title(
+            Line::from("NEW HIGH SCORE").style(
+                Style::new()
+                    .fg(ACCENT)
+                    .bg(BACKGROUND)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        );
+
+    let mut name = String::from("NAME: ");
+    name.push_str(app.entry_name());
+    if app.entry_name().chars().count() < NAME_MAX_LEN {
+        name.push('_');
+    }
+    let lines = vec![
+        Line::from(format!("SCORE {}", app.shown_score())),
+        Line::from(""),
+        Line::from(name),
+        Line::from(""),
+        Line::from("ENTER save   ESC skip"),
+    ];
+
+    render_framed(
+        frame,
+        rect,
+        block,
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .style(accent),
+    );
+}
+
+/// Clear a rect, paint it opaque and draw the bordered content inside.
+fn render_framed(frame: &mut Frame, rect: Rect, block: Block<'_>, content: Paragraph<'_>) {
+    frame.render_widget(Clear, rect);
+    frame
+        .buffer_mut()
+        .set_style(rect, Style::new().fg(MUTED).bg(BACKGROUND));
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    frame.render_widget(content, inner);
 }
 
 fn overlay(frame: &mut Frame, area: Rect, lines: Vec<Line<'_>>, colour: Color) {
@@ -540,6 +738,10 @@ mod tests {
             assert_eq!(panel.top, layout.top - 1);
 
             let mut corners = vec![(panel.left as usize, panel.top as usize)];
+            if width == PANEL_MIN_WIDTH && high_score_panel_rect(width, height).is_some() {
+                // The M8 panel is a second rounded block on the same top row.
+                corners.push((72, 5));
+            }
             for row in 0..4u16 {
                 for column in 0..4u16 {
                     let x = (layout.left + column * (CARD_WIDTH + CARD_GAP)) as usize;
@@ -559,7 +761,7 @@ mod tests {
                 "{width}x{height} rounded corners other than the panel and 16 cards"
             );
             if width == 100 {
-                assert_eq!((corners[1].0, corners[1].1), (30, 6));
+                assert_eq!((corners[2].0, corners[2].1), (30, 6));
                 assert_eq!(grid[6][30], '╭');
                 assert_eq!(grid[6][38], '╮');
                 assert_eq!(grid[10][30], '╰');
@@ -640,12 +842,12 @@ mod tests {
             assert_eq!(grid[top + 24][left], '╰');
             assert_eq!(grid[top + 24][left + 40], '╯');
             assert_eq!(
-                grid[top]
+                grid[top][left..(left + PANEL_WIDTH as usize)]
                     .iter()
                     .filter(|character| **character == '╭')
                     .count(),
                 1,
-                "{width}x{height} top edge has a second ╭"
+                "{width}x{height} play-area top edge has a second ╭"
             );
             assert_eq!(
                 grid[top + 24]
@@ -804,5 +1006,211 @@ mod tests {
         for word in ["game over", "1234", "restart"] {
             assert!(text.contains(word), "game-over overlay is missing {word}");
         }
+    }
+
+    fn high_scores(rows: &[(&str, u64)]) -> crate::highscore::HighScores {
+        let mut table = crate::highscore::HighScores::new();
+        for (name, score) in rows {
+            table.insert(*name, *score);
+        }
+        table
+    }
+
+    fn full_high_scores() -> crate::highscore::HighScores {
+        high_scores(&[
+            ("P0", 1000),
+            ("P1", 900),
+            ("P2", 800),
+            ("P3", 700),
+            ("P4", 600),
+            ("P5", 500),
+            ("P6", 400),
+            ("P7", 300),
+            ("P8", 200),
+            ("P9", 50),
+        ])
+    }
+
+    /// A full board with one merge available; the post-move spawn ends the game.
+    fn merge_game_over_board() -> Board {
+        Board::from_rows([
+            [2, 2, 8, 16],
+            [16, 32, 64, 128],
+            [8, 16, 32, 64],
+            [64, 128, 8, 32],
+        ])
+    }
+
+    /// Same shape, but the move scores 16 from zero (8 + 8 at the row end).
+    fn score_sixteen_game_over_board() -> Board {
+        Board::from_rows([
+            [16, 32, 8, 8],
+            [2, 4, 8, 16],
+            [4, 8, 16, 32],
+            [8, 16, 32, 64],
+        ])
+    }
+
+    #[test]
+    fn high_score_panel_is_20x12_at_100x36() {
+        let app = App::with_table(Game::new(42, 0), high_scores(&[("ALICE", 4096)]));
+        let rect = high_score_panel_rect(100, 36).expect("panel at 100x36");
+        assert_eq!((rect.x, rect.y, rect.width, rect.height), (72, 5, 20, 12));
+
+        let text = frame_text(&app, 100, 36);
+        let grid = lines(&text);
+        assert_eq!(grid[5][72], '╭');
+        assert_eq!(grid[5][91], '╮');
+        assert_eq!(grid[16][72], '╰');
+        assert_eq!(grid[16][91], '╯');
+        let title: String = grid[5][73..84].iter().collect();
+        assert_eq!(title, "HIGH SCORES");
+        // SPEC §4: `{name:<10} {score:>6}` is 17 characters, 8 spaces in all.
+        let expected_row = format!("{:<10} {:>6}", "ALICE", 4096);
+        assert_eq!(expected_row.matches(' ').count(), 8);
+        assert_eq!(expected_row.chars().count(), 17);
+        let row: String = grid[6][73..90].iter().collect();
+        assert_eq!(row, expected_row);
+        assert_eq!(text.matches("HIGH SCORES").count(), 1);
+    }
+
+    #[test]
+    fn no_panel_below_100_columns() {
+        for (width, height) in [(60u16, 30u16), (99, 36)] {
+            let text = frame_text(&seed_42_app(), width, height);
+            assert!(
+                !text.contains("HIGH SCORES"),
+                "{width}x{height} drew the wide panel"
+            );
+            assert!(
+                high_score_panel_rect(width, height).is_none(),
+                "{width}x{height} still reports a panel rect"
+            );
+        }
+    }
+
+    #[test]
+    fn table_overlay_shows_heading_rows_and_restart_at_60x30() {
+        let board = Board::from_rows([[2, 4, 2, 4], [4, 2, 4, 2], [2, 4, 2, 4], [4, 2, 4, 2]]);
+        let mut app = App::with_table(
+            Game::from_state(board, 16, 0, 42),
+            high_scores(&[("ALICE", 4096)]),
+        );
+        app.table_shown = true;
+
+        let rect = table_overlay_rect(60, 30);
+        assert_eq!((rect.x, rect.y, rect.width, rect.height), (17, 7, 26, 15));
+        let text = frame_text(&app, 60, 30);
+        let expected_row = format!("{:<10} {:>6}", "ALICE", 4096);
+        for needle in [
+            "HIGH SCORES",
+            expected_row.as_str(),
+            "SCORE 16",
+            "R restart   H close",
+        ] {
+            assert!(text.contains(needle), "table overlay missing {needle:?}");
+        }
+        let grid = lines(&text);
+        assert_eq!(grid[7][17], '╭');
+        assert_eq!(grid[7][42], '╮');
+        assert_eq!(grid[21][17], '╰');
+        assert_eq!(grid[21][42], '╯');
+    }
+
+    #[test]
+    fn table_overlay_is_shown_automatically_after_game_over_on_60x30() {
+        let mut app = App::with_table(
+            Game::from_state(merge_game_over_board(), 46, 0, 42),
+            full_high_scores(),
+        );
+        let effects = app.update(
+            Some(crate::action::Action::Move(crate::game::Direction::Left)),
+            Duration::ZERO,
+        );
+
+        assert!(effects.is_empty());
+        assert_eq!(app.game.score, 50);
+        assert!(app.game.game_over);
+        assert!(!app.entry_active(), "50 is not greater than the 10th");
+        assert!(app.table_shown, "game over shows the table automatically");
+
+        // Let the display count catch the real score before reading the frame.
+        app.update(None, Duration::from_millis(450));
+        assert_eq!(app.shown_score(), 50);
+
+        let text = frame_text(&app, 60, 30);
+        for needle in ["HIGH SCORES", "SCORE 50", "R restart   H close"] {
+            assert!(
+                text.contains(needle),
+                "auto table overlay missing {needle:?}"
+            );
+        }
+
+        app.update(Some(crate::action::Action::ToggleTable), Duration::ZERO);
+        let standard = frame_text(&app, 60, 30);
+        assert!(standard.contains("GAME OVER"));
+        assert!(standard.contains("Score 50"));
+        assert!(!standard.contains("H close"), "H must show the old overlay");
+
+        app.update(Some(crate::action::Action::ToggleTable), Duration::ZERO);
+        assert!(frame_text(&app, 60, 30).contains("R restart   H close"));
+    }
+
+    #[test]
+    fn entry_overlay_shows_the_counted_score_and_the_typed_name() {
+        let mut app = App::with_table(
+            Game::from_state(score_sixteen_game_over_board(), 0, 0, 42),
+            crate::highscore::HighScores::new(),
+        );
+        app.update(
+            Some(crate::action::Action::Move(crate::game::Direction::Left)),
+            Duration::ZERO,
+        );
+        assert_eq!(app.game.score, 16);
+        assert!(app.game.game_over);
+        assert!(app.entry_active());
+
+        // The same `dt` that let the game over also started the count; at
+        // 200 ms the G14 curve shows 13 while the real score is 16.
+        app.update(None, Duration::from_millis(200));
+        assert_eq!(app.shown_score(), 13);
+        app.update(Some(crate::action::Action::EntryChar('a')), Duration::ZERO);
+        app.update(Some(crate::action::Action::EntryChar('b')), Duration::ZERO);
+
+        let rect = entry_overlay_rect(100, 36);
+        assert_eq!((rect.x, rect.y, rect.width, rect.height), (33, 14, 34, 7));
+        let text = frame_text(&app, 100, 36);
+        for needle in [
+            "NEW HIGH SCORE",
+            "SCORE 13",
+            "NAME: AB_",
+            "ENTER save   ESC skip",
+        ] {
+            assert!(text.contains(needle), "entry overlay missing {needle:?}");
+        }
+        let grid = lines(&text);
+        assert_eq!(grid[14][33], '╭');
+        assert_eq!(grid[14][66], '╮');
+        assert_eq!(grid[20][33], '╰');
+        assert_eq!(grid[20][66], '╯');
+
+        // At ten characters the underscore disappears.
+        let mut full = App::with_table(
+            Game::from_state(score_sixteen_game_over_board(), 0, 0, 42),
+            crate::highscore::HighScores::new(),
+        );
+        full.update(
+            Some(crate::action::Action::Move(crate::game::Direction::Left)),
+            Duration::ZERO,
+        );
+        for character in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] {
+            full.update(
+                Some(crate::action::Action::EntryChar(character)),
+                Duration::ZERO,
+            );
+        }
+        let text = frame_text(&full, 100, 36);
+        assert!(text.contains("NAME: ABCDEFGHIJ"));
+        assert!(!text.contains("NAME: ABCDEFGHIJ_"));
     }
 }

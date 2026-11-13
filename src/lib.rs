@@ -22,7 +22,9 @@ pub use action::Action;
 pub use demo::demo_merge_app;
 pub use effects::Effects;
 pub use game::{Board, Direction, Game, Merge, MoveOutcome, SlideOutcome, Spawn};
-pub use highscore::{FileStore, HighScoreError, HighScoreStore, MemoryStore};
+pub use highscore::{
+    FileStore, HighScoreError, HighScoreStore, HighScores, MemoryStore, ScoreEntry,
+};
 pub use input::action_for_key;
 pub use render::frame_text;
 pub use rng::Xorshift64;

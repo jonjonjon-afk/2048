@@ -171,6 +171,7 @@ fn no_persist_never_writes_the_real_path() {
         !xdg.join("2048").exists(),
         "--no-persist must not create the data directory"
     );
+    assert!(!xdg.join("2048").join("highscores").exists());
     assert!(!xdg.join("2048").join("highscore").exists());
 
     let _ = fs::remove_dir_all(&xdg);

@@ -45,7 +45,7 @@ fn main() {
     }
 
     if args.self_test_tui {
-        match shell::run_self_test(MemoryStore::new(0), seed, args.fps) {
+        match shell::run_self_test(MemoryStore::new(), seed, args.fps) {
             // `run_self_test` has returned, so the terminal guard has already
             // restored raw mode and the alternate screen: the measured line is
             // the only thing printed, and it goes to stdout.
@@ -60,7 +60,7 @@ fn main() {
 
     let keep_in_memory = args.no_persist || args.demo || args.demo_merge;
     let outcome = if keep_in_memory {
-        let store = MemoryStore::new(0);
+        let store = MemoryStore::new();
         if args.demo || args.demo_merge {
             shell::run_live_app(demo_merge_app(0), store, args.fps)
         } else {
@@ -71,7 +71,7 @@ fn main() {
             Ok(store) => shell::run_live(store, seed, args.fps),
             Err(error) => {
                 eprintln!("warning: {error}; using an in-memory high score");
-                shell::run_live(MemoryStore::new(0), seed, args.fps)
+                shell::run_live(MemoryStore::new(), seed, args.fps)
             }
         }
     };

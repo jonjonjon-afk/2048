@@ -2,7 +2,7 @@
 //!
 //! The shell is the only place where the pure application state meets the
 //! filesystem and the terminal. It turns key events into actions, applies the
-//! returned effects to the high-score store, and draws the result.
+//! returned effects to the high-score table, and draws the result.
 
 use std::fmt;
 use std::io;
@@ -13,8 +13,8 @@ use crossterm::event::{self, Event};
 use crate::action::Action;
 use crate::game::Game;
 use crate::highscore::HighScoreStore;
-use crate::input::action_for_key;
-use crate::render::render;
+use crate::input::{action_for_key, entry_action_for_key};
+use crate::render::{render, PANEL_MIN_WIDTH};
 use crate::terminal::TerminalGuard;
 use crate::update::{App, Effect};
 
@@ -72,7 +72,7 @@ impl fmt::Display for SelfTestReport {
     }
 }
 
-/// Application state plus the store that owns the best score.
+/// Application state plus the store that owns the high-score table.
 pub struct Shell<S: HighScoreStore> {
     pub app: App,
     store: S,
@@ -99,10 +99,11 @@ impl SessionOutcome {
 }
 
 impl<S: HighScoreStore> Shell<S> {
-    /// Load the best score from the store and start a new game.
+    /// Load the table, set the in-game best from its top and start a new game.
     pub fn start(store: S, seed: u64) -> Self {
-        let best = store.load();
-        Self::from_app(App::new(Game::new(seed, best)), store)
+        let table = store.load();
+        let best = table.best();
+        Self::from_app(App::with_table(Game::new(seed, best), table), store)
     }
 
     /// Wrap an existing application state; used by tests and previews.
@@ -128,8 +129,8 @@ impl<S: HighScoreStore> Shell<S> {
     pub fn apply(&mut self, action: Option<Action>, dt: Duration) {
         for effect in self.app.update(action, dt) {
             match effect {
-                Effect::SaveBest(score) => {
-                    if let Err(error) = self.store.save(score) {
+                Effect::SaveScores(table) => {
+                    if let Err(error) = self.store.save(&table) {
                         // One line per session: a failed save must not spam stderr.
                         if self.warnings.is_empty() {
                             self.warnings.push(format!("warning: {error}"));
@@ -160,7 +161,10 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<Sess
     let mut last = deadline;
 
     while !shell.app.quit {
-        terminal.draw(|area| render(area, &shell.app))?;
+        let area = terminal.draw(|area| render(area, &shell.app))?.area;
+        // The draw knows the real terminal width, so the pure state can apply
+        // the "H does nothing where the panel is visible" rule (SPEC §5.5).
+        shell.app.set_panel_visible(area.width >= PANEL_MIN_WIDTH);
 
         // Wait for input only up to the next frame deadline. The draw happens
         // at the start of the next iteration, so draw time is part of the
@@ -168,7 +172,14 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<Sess
         let remaining = deadline.saturating_duration_since(Instant::now());
         let action = if event::poll(remaining)? {
             match event::read()? {
-                Event::Key(key) => action_for_key(key),
+                Event::Key(key) => {
+                    // Name entry owns the keyboard while it is open (M8).
+                    if shell.app.entry_active() {
+                        entry_action_for_key(key)
+                    } else {
+                        action_for_key(key)
+                    }
+                }
                 _ => None,
             }
         } else {
@@ -227,22 +238,27 @@ pub fn run_self_test<S: HighScoreStore>(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
     use crate::game::{Board, Direction};
-    use crate::highscore::HighScoreError;
+    use crate::highscore::{FileStore, HighScoreError, HighScores, FILE_NAME};
     use crate::render::frame_text;
 
     #[derive(Debug)]
     struct RecordingStore {
-        value: u64,
-        saves: Vec<u64>,
+        table: HighScores,
+        saves: Vec<HighScores>,
         fail: bool,
     }
 
     impl RecordingStore {
-        fn new(value: u64) -> Self {
+        fn new(table: HighScores) -> Self {
             Self {
-                value,
+                table,
                 saves: Vec::new(),
                 fail: false,
             }
@@ -250,7 +266,7 @@ mod tests {
 
         fn failing() -> Self {
             Self {
-                value: 0,
+                table: HighScores::new(),
                 saves: Vec::new(),
                 fail: true,
             }
@@ -258,18 +274,58 @@ mod tests {
     }
 
     impl HighScoreStore for RecordingStore {
-        fn load(&self) -> u64 {
-            self.value
+        fn load(&self) -> HighScores {
+            self.table.clone()
         }
 
-        fn save(&mut self, score: u64) -> Result<(), HighScoreError> {
+        fn save(&mut self, table: &HighScores) -> Result<(), HighScoreError> {
             if self.fail {
                 return Err(HighScoreError::NoDefaultPath);
             }
-            self.saves.push(score);
-            self.value = score;
+            self.saves.push(table.clone());
+            self.table = table.clone();
             Ok(())
         }
+    }
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    /// An explicit temp directory; no test reads the real HOME or data path.
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default();
+            let path = std::env::temp_dir().join(format!(
+                "game2048-shell-{}-{}-{}-{}",
+                std::process::id(),
+                nanos,
+                id,
+                label
+            ));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn high_scores(rows: &[(&str, u64)]) -> HighScores {
+        let mut table = HighScores::new();
+        for (name, score) in rows {
+            table.insert(*name, *score);
+        }
+        table
     }
 
     fn pair_app() -> App {
@@ -278,86 +334,104 @@ mod tests {
         App::new(Game::from_state(board, 0, 0, 42))
     }
 
-    #[test]
-    fn shell_loads_best_from_its_store() {
-        let shell = Shell::start(RecordingStore::new(5678), 42);
-
-        assert_eq!(shell.app.game.best, 5678);
-        assert_eq!(shell.store().saves, Vec::<u64>::new());
+    /// A full board with one merge available; the post-move spawn ends the game.
+    fn transition_app(score: u64) -> App {
+        let board = Board::from_rows([
+            [2, 2, 8, 16],
+            [16, 32, 64, 128],
+            [8, 16, 32, 64],
+            [64, 128, 8, 32],
+        ]);
+        App::with_table(Game::from_state(board, score, 0, 42), HighScores::new())
     }
 
     #[test]
-    fn new_best_is_saved_once() {
-        let mut shell = Shell::from_app(pair_app(), RecordingStore::new(0));
+    fn shell_loads_the_table_top_as_best() {
+        let table = high_scores(&[("ALICE", 4096)]);
+        let shell = Shell::start(RecordingStore::new(table.clone()), 42);
+
+        assert_eq!(shell.app.game.best, 4096);
+        assert_eq!(shell.app.table, table);
+        assert!(shell.store().saves.is_empty());
+    }
+
+    #[test]
+    fn quit_does_not_save_an_unnamed_score() {
+        let game = Game::from_state(Board::empty(), 1234, 0, 42);
+        let mut recording = Shell::from_app(App::new(game), RecordingStore::new(HighScores::new()));
+        recording.apply(Some(Action::Quit), Duration::ZERO);
+        assert!(recording.app.quit);
+        assert!(
+            recording.store().saves.is_empty(),
+            "an unnamed quit must write nothing"
+        );
+
+        // The real file is unchanged too.
+        let dir = TempDir::new("quit");
+        let path = dir.path.join(FILE_NAME);
+        fs::write(&path, "ALICE 4096\n").expect("write the table");
+        let mut shell = Shell::start(FileStore::new(&path), 42);
+        shell.apply(Some(Action::Quit), Duration::ZERO);
+        assert!(shell.app.quit);
+        assert_eq!(
+            fs::read_to_string(&path).expect("read the table"),
+            "ALICE 4096\n"
+        );
+        assert!(
+            !FileStore::new(&path).temp_path().exists(),
+            "no .tmp may be left behind"
+        );
+    }
+
+    #[test]
+    fn a_new_best_pulses_without_saving() {
+        let mut shell = Shell::from_app(pair_app(), RecordingStore::new(HighScores::new()));
 
         shell.apply(Some(Action::Move(Direction::Left)), Duration::ZERO);
         assert_eq!(shell.app.game.score, 2048);
-        assert_eq!(shell.store().saves, vec![2048]);
-
-        // Later frames with no new record must not write the store again.
-        for _ in 0..10 {
-            shell.apply(None, Duration::from_millis(33));
-        }
-        assert_eq!(shell.store().saves, vec![2048]);
+        assert_eq!(shell.app.game.best, 2048);
+        assert_eq!(shell.app.effects.best_pulse_age(), Some(Duration::ZERO));
+        assert!(
+            shell.store().saves.is_empty(),
+            "only a named entry is persisted"
+        );
     }
 
     #[test]
-    fn clean_quit_saves_best() {
-        let game = Game::from_state(Board::empty(), 1234, 0, 42);
-        let mut shell = Shell::from_app(App::new(game), RecordingStore::new(0));
+    fn save_failure_keeps_the_entry_and_warns() {
+        let mut shell = Shell::from_app(transition_app(12), RecordingStore::failing());
+        shell.apply(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        assert!(shell.app.entry_active(), "the game-over move opens entry");
 
-        shell.apply(Some(Action::Quit), Duration::from_millis(16));
+        shell.apply(Some(Action::EntryChar('A')), Duration::ZERO);
+        shell.apply(Some(Action::EntryEnter), Duration::ZERO);
 
-        assert!(shell.app.quit);
-        assert_eq!(shell.store().saves, vec![1234]);
-    }
-
-    #[test]
-    fn quit_save_failure_is_reported_once() {
-        let mut shell = Shell::from_app(App::new(Game::new(42, 0)), RecordingStore::failing());
-
-        shell.apply(Some(Action::Quit), Duration::ZERO);
-
-        assert!(shell.app.quit, "a failed save must not trap the player");
-        assert_eq!(
-            shell.warnings().len(),
-            1,
-            "exactly one warning line is queued"
-        );
-        let warning = &shell.warnings()[0];
+        assert!(!shell.app.entry_active(), "Enter closes the entry");
         assert!(
-            warning.starts_with("warning: "),
-            "warning must be prefixed for stderr: {warning}"
+            shell.store().saves.is_empty(),
+            "the failing store records no save"
         );
-        assert!(
-            warning.contains("no default data directory"),
-            "warning must carry the store error: {warning}"
-        );
-
-        // Further failed saves in the same session do not queue more lines.
-        shell.apply(None, Duration::from_millis(16));
+        assert_eq!(shell.app.table.entries().len(), 1);
+        assert_eq!(shell.app.table.best(), 16);
+        assert!(shell.app.warning_active(), "the footer warning is live");
         assert_eq!(shell.warnings().len(), 1);
-    }
-
-    #[test]
-    fn clean_quit_reports_no_warning() {
-        let game = Game::from_state(Board::empty(), 1234, 0, 42);
-        let mut shell = Shell::from_app(App::new(game), RecordingStore::new(0));
-
-        shell.apply(Some(Action::Quit), Duration::ZERO);
-
-        assert!(shell.app.quit);
         assert!(
-            shell.warnings().is_empty(),
-            "a successful save has no warning"
+            shell.warnings()[0].starts_with("warning: "),
+            "warning must be prefixed for stderr: {}",
+            shell.warnings()[0]
         );
-        assert_eq!(shell.store().saves, vec![1234]);
+        assert!(!shell.app.quit, "a failed save must not trap the player");
+
+        shell.apply(None, Duration::from_millis(16));
+        assert!(!shell.app.quit, "the session continues after the failure");
     }
 
     #[test]
     fn failed_save_shows_footer_warning_for_three_seconds() {
-        let mut shell = Shell::from_app(pair_app(), RecordingStore::failing());
+        let mut shell = Shell::from_app(transition_app(12), RecordingStore::failing());
         shell.apply(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        shell.apply(Some(Action::EntryChar('A')), Duration::ZERO);
+        shell.apply(Some(Action::EntryEnter), Duration::ZERO);
 
         let at_zero = frame_text(&shell.app, 100, 36).to_lowercase();
         assert!(at_zero.contains("not saved"), "warning missing at t = 0");

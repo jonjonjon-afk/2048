@@ -2,13 +2,17 @@
 //!
 //! This is the only module that reads crossterm event types. Release events
 //! never produce an action; only presses and auto-repeats do.
+//!
+//! Two mappings exist (SPEC §5.5): the normal game keys and the name-entry keys
+//! used while the `NEW HIGH SCORE` overlay is active. The shell picks between
+//! them with [`crate::update::App::entry_active`].
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
 use crate::action::Action;
 use crate::game::Direction;
 
-/// Translate one key event into an action, or `None` when the key is unbound.
+/// Translate one normal-game key event into an action, or `None` when unbound.
 ///
 /// Key releases are ignored so that terminals which report both edges of a
 /// keypress do not apply a move twice.
@@ -31,6 +35,28 @@ pub fn action_for_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::Restart),
         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => Some(Action::Quit),
         KeyCode::Char(' ') | KeyCode::Enter => Some(Action::DismissWin),
+        KeyCode::Char('h') | KeyCode::Char('H') => Some(Action::ToggleTable),
+        _ => None,
+    }
+}
+
+/// Translate one name-entry key event (SPEC §5.5, M8).
+///
+/// Every alphanumeric character types its uppercase form, Backspace edits,
+/// Enter saves and Esc discards. Everything else (arrows, Space, Tab, R/Q/H as
+/// commands) is ignored here, so it can never restart, quit or toggle.
+pub fn entry_action_for_key(key: KeyEvent) -> Option<Action> {
+    if key.kind == KeyEventKind::Release {
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Char(character) if character.is_ascii_alphanumeric() => {
+            Some(Action::EntryChar(character.to_ascii_uppercase()))
+        }
+        KeyCode::Backspace => Some(Action::EntryBackspace),
+        KeyCode::Enter => Some(Action::EntryEnter),
+        KeyCode::Esc => Some(Action::EntryCancel),
         _ => None,
     }
 }
@@ -41,6 +67,7 @@ mod tests {
 
     use super::*;
     use crate::game::{Board, Game};
+    use crate::highscore::HighScores;
     use crate::update::App;
 
     fn press(code: KeyCode) -> KeyEvent {
@@ -53,6 +80,22 @@ mod tests {
         game.won = true;
         game.reached_2048 = true;
         App::new(game)
+    }
+
+    fn app_with_entry() -> App {
+        let board = Board::from_rows([
+            [2, 2, 8, 16],
+            [16, 32, 64, 128],
+            [8, 16, 32, 64],
+            [64, 128, 8, 32],
+        ]);
+        let mut app = App::with_table(Game::from_state(board, 0, 0, 42), HighScores::new());
+        app.update(
+            Some(Action::Move(Direction::Left)),
+            std::time::Duration::ZERO,
+        );
+        assert!(app.entry_active(), "the game-over move must open entry");
+        app
     }
 
     #[test]
@@ -188,6 +231,95 @@ mod tests {
     }
 
     #[test]
+    fn h_toggles_the_table_overlay_outside_entry() {
+        let mut app = App::new(Game::new(42, 0));
+        assert!(!app.table_shown);
+
+        let toggle = action_for_key(press(KeyCode::Char('h')));
+        assert_eq!(toggle, Some(Action::ToggleTable));
+        app.update(toggle, std::time::Duration::ZERO);
+        assert!(app.table_shown, "H must open the table overlay");
+
+        let again = action_for_key(press(KeyCode::Char('H')));
+        assert_eq!(again, Some(Action::ToggleTable));
+        app.update(again, std::time::Duration::ZERO);
+        assert!(!app.table_shown, "H again must close the table overlay");
+    }
+
+    #[test]
+    fn arrows_do_not_move_while_the_table_overlay_is_open() {
+        let mut app = App::new(Game::new(42, 0));
+        app.update(Some(Action::ToggleTable), std::time::Duration::ZERO);
+        let board = app.game.board;
+        let score = app.game.score;
+        let rng = app.game.rng.state();
+
+        for code in [KeyCode::Left, KeyCode::Right, KeyCode::Up, KeyCode::Down] {
+            let action = action_for_key(press(code));
+            assert!(matches!(action, Some(Action::Move(_))), "key {code:?}");
+            app.update(action, std::time::Duration::ZERO);
+            assert_eq!(app.game.board, board, "move {code:?} changed the board");
+            assert_eq!(app.game.score, score);
+            assert_eq!(app.game.rng.state(), rng);
+        }
+
+        // R and Q still work while the overlay is open.
+        let restart = action_for_key(press(KeyCode::Char('r')));
+        app.update(restart, std::time::Duration::ZERO);
+        assert_eq!(app.game.score, 0);
+        assert!(!app.table_shown, "restart closes the overlay");
+
+        let mut quit_app = App::new(Game::new(42, 0));
+        quit_app.update(Some(Action::ToggleTable), std::time::Duration::ZERO);
+        quit_app.update(
+            action_for_key(press(KeyCode::Char('q'))),
+            std::time::Duration::ZERO,
+        );
+        assert!(quit_app.quit, "Q must quit from the table overlay");
+    }
+
+    #[test]
+    fn letters_type_into_the_name_instead_of_moving() {
+        // The same key has two mappings: game key A vs entry key A.
+        assert_eq!(
+            action_for_key(press(KeyCode::Char('a'))),
+            Some(Action::Move(Direction::Left))
+        );
+        assert_eq!(
+            entry_action_for_key(press(KeyCode::Char('a'))),
+            Some(Action::EntryChar('A'))
+        );
+
+        let mut app = app_with_entry();
+        let board = app.game.board;
+        app.update(
+            entry_action_for_key(press(KeyCode::Char('a'))),
+            std::time::Duration::ZERO,
+        );
+        assert_eq!(app.entry_name(), "A");
+        assert_eq!(app.game.board, board, "A must not move the board");
+
+        app.update(
+            entry_action_for_key(press(KeyCode::Char('q'))),
+            std::time::Duration::ZERO,
+        );
+        assert_eq!(app.entry_name(), "AQ");
+        assert!(!app.quit, "Q must type, not quit");
+
+        assert_eq!(
+            entry_action_for_key(press(KeyCode::Esc)),
+            Some(Action::EntryCancel)
+        );
+        app.update(
+            entry_action_for_key(press(KeyCode::Esc)),
+            std::time::Duration::ZERO,
+        );
+        assert!(!app.entry_active(), "Esc must cancel the entry");
+        assert!(!app.quit, "Esc must not quit while entry is active");
+        assert!(app.table.is_empty(), "Esc must not save a row");
+    }
+
+    #[test]
     fn key_release_events_do_not_trigger_actions() {
         for code in [
             KeyCode::Left,
@@ -204,6 +336,7 @@ mod tests {
             let mut key = KeyEvent::new(code, KeyModifiers::NONE);
             key.kind = KeyEventKind::Release;
             assert_eq!(action_for_key(key), None, "release of {code:?}");
+            assert_eq!(entry_action_for_key(key), None, "entry release of {code:?}");
         }
     }
 
@@ -212,5 +345,8 @@ mod tests {
         assert_eq!(action_for_key(press(KeyCode::Char('z'))), None);
         assert_eq!(action_for_key(press(KeyCode::Tab)), None);
         assert_eq!(action_for_key(press(KeyCode::Backspace)), None);
+        assert_eq!(entry_action_for_key(press(KeyCode::Char(' '))), None);
+        assert_eq!(entry_action_for_key(press(KeyCode::Tab)), None);
+        assert_eq!(entry_action_for_key(press(KeyCode::Left)), None);
     }
 }

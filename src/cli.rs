@@ -189,8 +189,8 @@ pub fn resolved_seed(args: &Args) -> u64 {
 
 /// Run a headless game and return the exact SPEC 5.6 dump text.
 pub fn headless_dump(seed: u64, moves: &[Direction]) -> String {
-    let store = MemoryStore::new(0);
-    let mut game = Game::new(seed, store.load());
+    let store = MemoryStore::new();
+    let mut game = Game::new(seed, store.load().best());
     for direction in moves {
         game.apply_move(*direction);
     }
