@@ -5,6 +5,16 @@ keeps a persistent high-score table and renders shader-style effects — a plasm
 background, a merge ripple and particle sparks — as animated 24-bit ANSI cells.
 The game is specified in [`docs/SPEC.md`](docs/SPEC.md).
 
+## Screenshots
+
+Gameplay on a terminal below 100 columns — plasma background, neon cards, `SCORE`/`BEST` on the play-area edge:
+
+![Gameplay](screenshot1.png)
+
+The same game with the `HIGH SCORES` table opened with `H` (the side panel appears at 100+ columns; below it the table is an overlay):
+
+![High-score table](screenshot2.png)
+
 ## Status
 - **M0 recon and plan:** approved.
 - **M1 headless core + storage:** approved — exact rules, deterministic RNG, atomic high-score table, CLI dump.
