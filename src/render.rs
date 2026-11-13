@@ -317,8 +317,7 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
         } else {
             app.game.board.cell(cell)
         };
-        let bright =
-            !sliding && (app.effects.is_flashing(cell) || app.effects.is_popping(cell));
+        let bright = !sliding && (app.effects.is_flashing(cell) || app.effects.is_popping(cell));
         let border = if bright {
             Style::new().fg(Color::Rgb(255, 255, 255)).bg(BACKGROUND)
         } else {
@@ -445,12 +444,7 @@ fn draw_card_body(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
 
 /// Draw one card's value on card row 2, centred in its 7-cell interior.
 fn draw_card_label(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
-    let inner = Rect::new(
-        x as u16 + 1,
-        y as u16 + CARD_HEIGHT / 2,
-        LABEL_WIDTH,
-        1,
-    );
+    let inner = Rect::new(x as u16 + 1, y as u16 + CARD_HEIGHT / 2, LABEL_WIDTH, 1);
     let style = if bright {
         bright_tile_style(value)
     } else {

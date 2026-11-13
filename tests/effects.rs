@@ -1100,7 +1100,11 @@ fn the_jiggle_never_leaves_the_board() {
     left.update(None, Duration::from_millis(40));
     let buffer = frame_buffer(&left, WIDTH, HEIGHT);
     assert_eq!(play_cell(&buffer, 0, 0), '╭', "cell 0 clamps to column 0");
-    assert_eq!(play_cell(&buffer, 3, 2), '1', "the label clamps with the card");
+    assert_eq!(
+        play_cell(&buffer, 3, 2),
+        '1',
+        "the label clamps with the card"
+    );
 
     // Cell 3 with dx = +2 clamps to x = 30, so the card ends at column 38.
     let board = Board::from_rows([[0, 0, 8, 8], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
@@ -1109,7 +1113,11 @@ fn the_jiggle_never_leaves_the_board() {
     right.update(None, Duration::from_millis(140));
     let buffer = frame_buffer(&right, WIDTH, HEIGHT);
     assert_eq!(play_cell(&buffer, 30, 0), '╭', "cell 3 clamps to column 30");
-    assert_eq!(play_cell(&buffer, 38, 0), '╮', "the card stays inside 39x23");
+    assert_eq!(
+        play_cell(&buffer, 38, 0),
+        '╮',
+        "the card stays inside 39x23"
+    );
     assert_eq!(play_cell(&buffer, 33, 2), '1', "the clamped label");
 }
 
@@ -1143,8 +1151,7 @@ fn full_high_scores() -> HighScores {
 
 #[test]
 fn the_win_overlay_waits_for_the_landing() {
-    let board =
-        Board::from_rows([[1024, 1024, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let board = Board::from_rows([[1024, 1024, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
     let mut app = App::new(Game::from_state(board, 0, 0, 42));
     app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
     assert!(app.game.won);

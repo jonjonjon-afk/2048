@@ -60,8 +60,7 @@ fn main() {
         return;
     }
 
-    let keep_in_memory =
-        args.no_persist || args.demo || args.demo_merge || args.demo_slide;
+    let keep_in_memory = args.no_persist || args.demo || args.demo_merge || args.demo_slide;
     let outcome = if keep_in_memory {
         let store = MemoryStore::new();
         if args.demo_slide {
