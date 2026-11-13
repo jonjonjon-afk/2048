@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M7 (merge ripple) — round 2 gate passed, awaiting verdict (round 2)
-- Last gate result: gate exit 0 (docs/evidence/M7.md "M7 gate round 2"); 125 tests, 0 failed
-- Next action: stop; the human's live check of the linear fade (does the wave dim as it crosses the board) is still open
+- Milestone: M8 (arcade high-score table) — round 1 in progress
+- Last gate result: M7 gate exit 0 (docs/evidence/M7.md "M7 gate round 2"); 125 tests, 0 failed
+- Next action: implement R1-R8; commit the reviewer SPEC/reviews unchanged first; stop at the M8 gate
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -20,13 +20,13 @@
 | M7 | Merge ripple | gate passed | awaiting verdict (round 2) | docs/evidence/M7.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- M7 round 2, F1: SPEC §5.4 Brightness — mix the glyph fg from the renderer background by the cell amplitude, `f64::round` per channel.
-- F1: expose `Ripple::front_at(x, y) -> (glyph, amplitude)` so the renderer dims with exactly the amplitude that chose the glyph.
-- F1: replace `ripple_colour_comes_from_the_merged_value` with `ripple_colour_fades_with_age` (four `assert_eq!` literals + direct brighter than reflected).
-- F2: glyph cells untouched; assert the three effect fixtures and the e2e capture are a 0-line diff; `make check` stays 125 tests.
-- F3: ev.sh blocks for the colour test, `make check`, the gate and fixture numstat 0; A10 mentions the fade; api-notes row for `f64::round`.
-- F3: SPEC and the review committed unchanged; protected diff and Cargo 0 bytes.
-- Done this round: F1-F3; gate exit 0; stop and wait for the audit.
+- Commit docs/SPEC.md, docs/reviews/M7.md and docs/reviews/M8.md unchanged (reviewer-owned).
+- R1/R2: `HighScores` table, parser/writer, `.tmp` rename, legacy `highscore` migration, new trait.
+- R3/R4: entry state machine, entry key mapping, H table toggle and move blocking in `App`.
+- R5: 20x12 panel at >= 100 columns, 26x15 table overlay, 34x7 entry overlay + named render tests.
+- R6/R7: shell loads the table as best, saves once on Enter, warns on failure; named restart test.
+- R8: regenerate the 100x36 fixtures/e2e (12/12 panel lines), keep the 60x30 and dump fixtures.
+- Evidence via scripts/ev.sh for every cited command; EVIDENCE A3/A6/A11, PROGRESS, api-notes.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.

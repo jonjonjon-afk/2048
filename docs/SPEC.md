@@ -48,7 +48,10 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - `SCORE` and `BEST`: on the play-area frame's top edge, `SCORE <n>` then three spaces then `BEST <n>`, starting two cells after the top-left corner; the rest of the edge is `─`. Both use the header style; the `BEST` segment pulses when a new record is set. The outer header shows the title only.
 - The `SCORE` number counts up to its new value over 450 ms with an ease-out (section 5.7); `BEST` changes immediately. The count is display only and never changes the rules, the score or the RNG.
 - Footer: key legend and a transient storage warning slot.
-- Overlays: win (`2048!` + continue/restart) and game over (final score + restart).
+- Overlays: win (`2048!` + continue/restart), game over (final score + restart), and the M8 name-entry and high-score views below.
+- High-score panel (M8): at terminals at least 100 columns x 30 rows, a 20 x 12 bordered block titled `HIGH SCORES` sits two blank columns right of the play-area frame, its top edge on the play area's top row (at 100x36: left 72, top 5). Its 10 content rows read `{name:<10} {score:>6}`, best first, left-aligned one cell inside the block; rows beyond the table stay blank. Terminals below 100 columns show no panel.
+- Table overlay (M8): on terminals without the panel a centred 26 x 15 bordered block titled `HIGH SCORES` shows the same 10 rows; `H` toggles it. During play its bottom content row is `H close`; after game over its last two content rows are `SCORE <shown>` and `R restart   H close`, and the overlay is shown automatically (H switches back to the standard game-over overlay).
+- Name-entry overlay (M8): a centred 34 x 7 bordered block titled `NEW HIGH SCORE`, shown instead of the game-over overlay when a qualifying score ends a game; its content rows are `SCORE <shown>`, blank, `NAME: <typed>_` (no `_` at 10 characters), blank, `ENTER save   ESC skip`.
 - Too-small terminal: a centred notice with the required size; no board rendering.
 
 ## 5. Behaviour
@@ -61,7 +64,7 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - A move that changes nothing does not spawn and does not score.
 - Reaching 2048 sets the win state once; the player may continue. Game over is when no empty cell or equal neighbour exists.
 - R starts a new game and keeps the best score.
-- Best score is `max(previous best, current score)`.
+- The in-game best is `max(loaded table top, current score)`; only named entries and the legacy migration persist (section 5.3).
 
 ### 5.2 Deterministic RNG (contract for reproducible seeds)
 - Xorshift64*: `x ^= x >> 12; x ^= x << 25; x ^= x >> 27; state = x; output = x * 0x2545F4914F6CDD1D` (wrapping u64). A seed of 0 is replaced by `0x9E3779B97F4A7C15`.
@@ -73,6 +76,9 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - `highscores` (the table): one entry per line, `NAME SCORE`, sorted by score descending, at most 10 entries. A new score is inserted at its sorted position (ties go after the equal entries) and the list is truncated to 10.
 - Names: 1-10 characters from `A-Z` and `0-9`, stored uppercase. The parser also accepts `-`, so a migrated legacy score can live as `---`.
 - Best score: the score of the first entry, or 0 for an empty table.
+- A score qualifies for the table when it is > 0 and either the table holds fewer than 10 entries or the score is greater than the 10th entry's score.
+- Only named entries and the legacy migration are persisted. The in-game best and the new-best pulse follow section 5.1; quitting or restarting before game over saves nothing.
+- A saved entry stores the real `game.score`, never the displayed count.
 - Load: a missing or unreadable file is an empty table, never an error. A malformed line is skipped; scores parse as `u64`.
 - Writes go to a sibling `.tmp` file and are renamed into place.
 - If saving fails, the game keeps running, shows a warning in the footer for a few seconds and keeps the entry in memory; it never panics.
@@ -105,18 +111,21 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 | R | new game |
 | Q / Esc | quit |
 | Space / Enter | dismiss the win overlay ("keep playing") |
-| H | toggle the high-score table overlay (M8); also shown automatically after game over |
+| H | toggle the high-score table overlay (M8) on terminals without the panel; after game over it is shown automatically and H switches back to the game-over overlay. Where the panel is visible H does nothing. |
 | any move key while game over | ignored |
 | any move key while the win overlay is visible | ignored until dismissed |
+| any move key while the table overlay is open during play | ignored; H closes it, R and Q still work |
 
 Name entry (M8), shown after game over when the score qualifies for the table:
 | Key | Action |
 |---|---|
-| A-Z, 0-9 | append one character (maximum 10) |
-| Backspace | delete the last character |
-| Enter | save the entry and close the entry overlay; requires at least 1 character |
+| A-Z, 0-9 | append one character, uppercased (maximum 10; further characters are ignored) |
+| Backspace | delete the last character; no-op when empty |
+| Enter | save the entry and close the entry overlay; with fewer than 1 character nothing happens |
 | Esc | discard the entry and close the overlay |
-| R, Q, arrows, H | typed as characters or ignored; they must not restart, quit or toggle anything while entry is active |
+| R, Q, arrows, H | typed as characters (R, Q, H) or ignored (arrows); they must not restart, quit or toggle anything while entry is active |
+
+A typed name is stored and displayed uppercase. Name entry opens only on the game-over transition, never mid-game, and only for a qualifying score (section 5.3).
 
 ### 5.6 CLI
 | Flag | Meaning |
@@ -178,6 +187,8 @@ Source: standard 2048 rules, hand-computed below. Tests assert these exactly.
 | G13 | missing or `"oops"` high-score file | load = 0, no panic | hand-computed |
 | G14 | score change 0 -> 16, then `dt` steps of 50 ms | displayed 0, 4, 8, 11, 13, 14, 15, 15, 15, 16 at t = 0, 50, 100, 150, 200, 250, 300, 350, 400, 450 ms | hand-computed from 5.7: `floor(16 * (1 - (1 - t/450)^3))` |
 | G15 | `--demo-merge` (score 0 -> 4), frames 4 / 14 / 24 / 30 = 64 / 224 / 384 / 480 ms | `SCORE 1`, `SCORE 3`, `SCORE 3`, `SCORE 4`; `BEST 4` at every frame | hand-computed from 5.7: `floor(4 * (1 - (1 - t/450)^3))` = 1.475, 3.493, 3.987, then the 450 ms clamp |
+| G16 | insert `AAA 100`, `BBB 100`, `CCC 50`, then `DDD 200` into an empty table | rows `DDD 200`, `AAA 100`, `BBB 100`, `CCC 50`; ties keep insertion order; an 11th entry below the 10th is dropped | hand-computed from 5.3 |
+| G17 | a full table whose 10th score is 50; game over with 0, 50 and 51 | 0 and 50 do not qualify; 51 does | hand-computed from 5.3 |
 
 ## 7. Data sources and modes
 | Source | What it provides | Purpose |
@@ -203,7 +214,7 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **M5 Prettier board and real 60 FPS.** 9x5 cards with the value on the true middle row, the play-area frame with `SCORE` and `BEST` on its top edge, default 60 FPS with deadline pacing, measured self-test line, `make e2e` captures moved to `docs/evidence/e2e/`. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "SCORE 0" && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "BEST 0" && script -qec "./target/debug/game2048 --self-test-tui --seed 42 --no-persist --fps 60" /dev/null | grep -Eq "self-test-tui: 120 frames in [0-9]+\.[0-9][0-9]s \(([5-6][0-9]) fps\)"'` exits 0.
 - **M6 Score count-up.** The displayed score chases the real score with the 450 ms ease-out of section 5.7: re-target from the shown value, restart resets it, `BEST` jumps at once, `--dump` stays real, and one accessor feeds the panel and the game-over overlay. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 4 --no-persist | grep -q "SCORE 1" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "SCORE 3" && cargo run --quiet -- --render-once --demo-merge --frame 30 --no-persist | grep -q "SCORE 4" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "BEST 4" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt'` exits 0.
 - **M7 Merge ripple.** Replace the shockwave with the bouncing, fading ripple of section 5.4, keep sparks/flash/pop, update the effect snapshots and captures. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt && make e2e'` exits 0.
-- **M8 Arcade high-score table.** Named table (section 5.3), name entry after game over (section 5.5), score panel on wide terminals and `H` overlay otherwise, legacy `highscore` migration, restart proof. *Gate:* `make check` green including the storage, entry and restart suites; `cargo run --quiet -- --dump --seed 42 --no-persist` still prints the exact block in section 5.6; the restart test proves a named entry survives a real process restart through `$XDG_DATA_HOME`; `cargo run --quiet -- --render-once --seed 42 --no-persist` shows the table heading.
+- **M8 Arcade high-score table.** Named table (section 5.3), name entry after game over (section 5.5), score panel at 100+ columns and `H` overlay below, legacy `highscore` migration, named restart proof. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --dump --seed 42 --no-persist | diff -q - tests/fixtures/dump_seed42.txt && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "HIGH SCORES" && cargo test --offline --test restart named_entry_survives_a_process_restart -- --exact && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▓" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "▒" && make e2e'` exits 0.
 - **M9 Handover refresh.** README, acceptance rows, clean-clone gate for M5-M8, no stale evidence pointers. *Gate:* `bash -o pipefail -c 'rm -rf /tmp/2048-clean && git clone . /tmp/2048-clean && cd /tmp/2048-clean && make check && make e2e && test -z "$(git status --porcelain)"'` exits 0; every acceptance row A1-A11 is complete in `docs/EVIDENCE.md`.
 
 ## 9. Acceptance checklist (IDs referenced in EVIDENCE.md)
