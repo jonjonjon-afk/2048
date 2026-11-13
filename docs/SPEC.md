@@ -9,31 +9,44 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 
 ## 2. Non-goals
 - No GPU, OpenGL, GLSL or image protocol. Shader-style means the same maths (plasma, radial waves, particles) evaluated per terminal cell and drawn as colour/style, not a GPU shader.
-- No mouse, touch, network, accounts, online leaderboard or cloud sync.
+- No mouse, touch, network, accounts, online leaderboard or cloud sync. The named high-score table is a local file only (M8); it never contacts anything.
 - No undo, board-size variants, themes, sound or mobile support.
 - No Windows-specific verification in this project; the code should stay portable and Linux is the acceptance platform.
 
 ## 3. Environment
 - Linux-first, portable Rust; terminal with 24-bit truecolour support (modern xterm, kitty, alacritty, foot, iTerm2).
 - Target size **100 x 36** (width x height); minimum supported **60 x 30**. Order is always columns x rows. Below the minimum the app shows a readable notice and still quits cleanly.
-- Animation target 30 FPS (configurable `--fps`); core rules are instant.
+- Animation target 60 FPS (configurable `--fps`); core rules are instant. The live loop draws, then waits until the next frame deadline instead of polling for a whole frame after drawing, so the achieved rate is not reduced by draw time.
 - No network. Offline only. The high score is local.
 - Input: arrow keys and WASD; R restart; Q/Esc quit; Space/Enter to continue after winning.
 
 ## 4. Layout / interface
 ```
-┌ 2048 ────────────────────────────────  SCORE 1234   BEST 5678 ┐
-│                                                               │
-│   ╭───────╮ ╭───────╮ ╭───────╮ ╭───────╮                     │
-│   │   2   │ │   4   │ │       │ │       │                     │
-│   ╰───────╯ ╰───────╯ ╰───────╯ ╰───────╯                     │
-│   ...                                                         │
-│                                                               │
-│   Arrows / WASD move   R restart   Q quit                     │
-└───────────────────────────────────────────────────────────────┘
+┌ 2048 ──────────────────────────────────────────────────────────────────────────┐
+│                                                                                │
+│                                                                                │
+│                                                                                │
+│                                                                                │
+│               ╭ SCORE 1234   BEST 5678 ──────────────────────────────╮          │
+│               │ ╭───────╮ ╭───────╮ ╭───────╮ ╭───────╮             │          │
+│               │ │       │ │       │ │       │ │       │             │          │
+│               │ │   2   │ │       │ │       │ │       │             │          │
+│               │ │       │ │       │ │       │ │       │             │          │
+│               │ ╰───────╯ ╰───────╯ ╰───────╯ ╰───────╯             │          │
+│               │  ... 4 rows of cards, 1 cell apart ...              │          │
+│               ╰──────────────────────────────────────────────────────╯          │
+│                                                                                │
+│                                                                                │
+│                                                                                │
+│    Arrows / WASD move   R restart   Q quit                                     │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
-- Header: title left, `SCORE` and `BEST` right; the best flashes when a new record is set.
-- Board: 4 x 4 rounded cards, each 8 cells wide x 4 rows tall, centred; the cards keep this fixed size on terminals larger than 100x36 (the extra space shows the plasma). Empty cells are dim outlines.
+- Outer frame: one border around the whole terminal; the title `2048` sits on its top edge, left.
+- Play-area frame: 41 x 25 cells (a 39 x 23 board plus one border cell on every side), centred with floor division. At 100x36 it starts at column 29, row 5; at 60x30 at column 9, row 2. It never overlaps the header row, the footer or the outer frame.
+- Board: 4 x 4 rounded cards, each 9 cells wide x 5 rows tall, one blank cell between neighbours. The cards keep this fixed size on larger terminals; the extra space shows the plasma. Empty cells are dim outlines.
+- Tile value: bold, on the middle inner row of its card (card row 2 of 5) and horizontally centred inside the 7-cell inner width with left padding `(7 - digits) / 2`.
+- `SCORE` and `BEST`: on the play-area frame's top edge, `SCORE <n>` then three spaces then `BEST <n>`, starting two cells after the top-left corner; the rest of the edge is `─`. Both use the header style; the `BEST` segment pulses when a new record is set. The outer header shows the title only.
+- The `SCORE` number counts up to its new value over 450 ms with an ease-out (section 5.7); `BEST` changes immediately. The count is display only and never changes the rules, the score or the RNG.
 - Footer: key legend and a transient storage warning slot.
 - Overlays: win (`2048!` + continue/restart) and game over (final score + restart).
 - Too-small terminal: a centred notice with the required size; no board rendering.
@@ -55,20 +68,27 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 - Spawn uses two draws in this order: `cell = next_u64() % empty_count` indexing the ascending list of empty cell indices, then `value = 4` when `next_u64() % 10 == 0`, else `2`.
 - New games call spawn twice, in that order.
 
-### 5.3 High score storage
-- Default path: `ProjectDirs::from("", "", "2048").data_dir()/highscore`, i.e. `$XDG_DATA_HOME/2048/highscore` on Linux.
-- File contains one decimal `u64` and a newline. Missing or corrupt file loads as 0, never crashes.
+### 5.3 High-score table and storage (M8)
+- Directory: `ProjectDirs::from("", "", "2048").data_dir()` (`$XDG_DATA_HOME/2048` on Linux).
+- `highscores` (the table): one entry per line, `NAME SCORE`, sorted by score descending, at most 10 entries. A new score is inserted at its sorted position (ties go after the equal entries) and the list is truncated to 10.
+- Names: 1-10 characters from `A-Z` and `0-9`, stored uppercase. The parser also accepts `-`, so a migrated legacy score can live as `---`.
+- Best score: the score of the first entry, or 0 for an empty table.
+- Load: a missing or unreadable file is an empty table, never an error. A malformed line is skipped; scores parse as `u64`.
 - Writes go to a sibling `.tmp` file and are renamed into place.
-- If saving fails, the game keeps running and shows a warning in the footer for a few frames; it never panics.
-- `--demo`, `--demo-merge` and `--no-persist` use an in-memory store and never touch the real file.
+- If saving fails, the game keeps running, shows a warning in the footer for a few seconds and keeps the entry in memory; it never panics.
+- `highscore` (legacy, one decimal `u64` and a newline): read once for migration only. When `highscores` is missing and `highscore` holds v > 0, the loaded table is the single entry `--- v`, written on the next save. `highscore` is never written again.
+- `--demo`, `--demo-merge` and `--no-persist` use an in-memory store and never touch either real file.
 
 ### 5.4 Effects (all deterministic under fixed `dt`)
 - **Plasma background**: per-cell colour from `sin`/`cos` of column, row and phase; phase advances by `dt`; dim enough to keep tiles readable.
-- **Merge shockwave**: for every merge, a ring expands from the destination cell for **450 ms**. Characters `░`, `▒`, `▓` mark the ring; colour is derived from the merged tile value.
-- **Sparks**: 14 particles per merge, lifetime **500 ms**, characters `·`, `✦`, `+`, `*`, drifting outward with drag; drawn only inside the board area.
+- **Merge ripple** (M7; replaces the M3 shockwave): for every merge a wave leaves the merged cell and travels outward at **40 cells per second** for **900 ms**, bouncing off the play-area walls and fading out.
+  - Space: play-area cells, x in `0..39`, y in `0..23`; the source is the merged card's centre `(col * 10 + 4.5, row * 6 + 2.5)`; distance is Chebyshev, `max(|dx|, |dy|)`.
+  - Wavefront: a cell is on the front when its distance to **any** of the source's mirror images is within 0.75 of the current radius (`radius = age_ms * 4 / 100`). Images are the direct source, its reflections across `x = 0`, `x = 39`, `y = 0`, `y = 23`, and the four combinations. Reflection is what makes the ripple return from a wall.
+  - Amplitude: `1 - age_ms / 900` for the direct image, times `0.55` per wall reflection; a cell uses its strongest image. Symbols: `>= 0.55` is `▓`, `>= 0.30` is `▒`, `>= 0.10` is `░`, below that nothing. Colour is derived from the merged tile value.
+- **Sparks**: 14 particles per merge, lifetime **500 ms**, characters `·`, `✦`, `+`, `*`, drifting outward with drag; drawn only inside the play area.
 - **Tile flash**: merged tiles brighten for **180 ms**.
 - **Spawn pop**: newly spawned tiles brighten for **120 ms**.
-- **New best**: the BEST value pulses for **600 ms**.
+- **New best**: the `BEST` value pulses for **600 ms**.
 - Animations update from an injected `dt`; core logic and tests never read the wall clock. The `--frame N` contract uses exactly 16 ms per step (`elapsed = N * 16 ms`).
 - Effects must never change the game state or the timing of the RNG.
 
@@ -82,8 +102,18 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 | R | new game |
 | Q / Esc | quit |
 | Space / Enter | dismiss the win overlay ("keep playing") |
+| H | toggle the high-score table overlay (M8); also shown automatically after game over |
 | any move key while game over | ignored |
 | any move key while the win overlay is visible | ignored until dismissed |
+
+Name entry (M8), shown after game over when the score qualifies for the table:
+| Key | Action |
+|---|---|
+| A-Z, 0-9 | append one character (maximum 10) |
+| Backspace | delete the last character |
+| Enter | save the entry and close the entry overlay; requires at least 1 character |
+| Esc | discard the entry and close the overlay |
+| R, Q, arrows, H | typed as characters or ignored; they must not restart, quit or toggle anything while entry is active |
 
 ### 5.6 CLI
 | Flag | Meaning |
@@ -96,8 +126,8 @@ A single-player 2048 game for the project owner, played entirely from the keyboa
 | `--demo` | seeded showcase board, in-memory score, some effects triggered |
 | `--demo-merge` | demo board plus an immediate merge effect for captures |
 | `--no-persist` | force the in-memory high-score store |
-| `--self-test-tui` | enter the real TUI, draw a few frames, restore and exit 0 |
-| `--fps <n>` | live frame rate (default 30) |
+| `--self-test-tui` | enter the real TUI, draw 120 frames at the live pacing, restore, print `self-test-tui: 120 frames in <secs>s (<fps> fps)` on stdout and exit 0 |
+| `--fps <n>` | live frame rate (default 60) |
 | `--help` | usage |
 
 `--dump --seed 42` (no moves) must print exactly:
@@ -112,6 +142,18 @@ best: 0
 won: false
 game_over: false
 ```
+
+### 5.7 Score count-up (display only)
+- The panel and the overlays show a *displayed* score that chases the real `game.score`. It never feeds back into the rules, the score, the best score or the RNG.
+- Constant `SCORE_COUNT_MILLIS = 450`. A score change takes `from` = the value currently displayed and `to` = the new real score, resets the animation clock to 0 and advances it by the injected `dt`:
+  - `elapsed >= 450` -> displayed = `to`;
+  - otherwise, with `x = elapsed / 450` and `progress = 1 - (1 - x)^3` in `f64`, displayed = `from + floor((to - from) * progress)`.
+- The score change and the `dt` of the same `update` call both count: `update` applies the action first (it may raise the score), then advances the count. That is what pins the `--demo-merge` frames in G15.
+- A score change during a running count re-targets from the currently displayed value to the new real score and restarts the clock. All merges of one move are one change (their summed delta).
+- `Action::Restart` shows 0 immediately, with no counting. `best` is never counted: it jumps at once and pulses.
+- Every score display reads the displayed value through one accessor: the play-area top edge and the game-over overlay.
+- `--dump` prints the real `game.score`, never the displayed value.
+- The count is pure state advanced only by `dt`; the core reads no wall clock.
 
 ## 6. Golden examples (exact input -> output pairs)
 Source: standard 2048 rules, hand-computed below. Tests assert these exactly.
@@ -131,6 +173,8 @@ Source: standard 2048 rules, hand-computed below. Tests assert these exactly.
 | G11 | full board with no equal neighbours | `game_over=true`; any move is a no-op | hand-computed |
 | G12 | save 4096 then load from temp file | load = 4096; overwrite 8192 -> load = 8192 | hand-computed |
 | G13 | missing or `"oops"` high-score file | load = 0, no panic | hand-computed |
+| G14 | score change 0 -> 16, then `dt` steps of 50 ms | displayed 0, 4, 8, 11, 13, 14, 15, 15, 15, 16 at t = 0, 50, 100, 150, 200, 250, 300, 350, 400, 450 ms | hand-computed from 5.7: `floor(16 * (1 - (1 - t/450)^3))` |
+| G15 | `--demo-merge` (score 0 -> 4), frames 4 / 14 / 24 / 30 = 64 / 224 / 384 / 480 ms | `SCORE 1`, `SCORE 3`, `SCORE 3`, `SCORE 4`; `BEST 4` at every frame | hand-computed from 5.7: `floor(4 * (1 - (1 - t/450)^3))` = 1.475, 3.493, 3.987, then the 450 ms clamp |
 
 ## 7. Data sources and modes
 | Source | What it provides | Purpose |
@@ -153,14 +197,24 @@ Every gate is a runnable command with an expected result. After each gate the co
 - **M2 TUI shell and controls.** ratatui/crossterm app, layout at 100x36 and 60x30, header/footer/overlays, all key bindings, terminal restore on quit/panic, `--render-once` and `--self-test-tui`. *Gate:* `make check` green including snapshots; `cargo run -- --render-once --seed 42 --no-persist` exits 0 and contains `2048`, `SCORE`, `BEST`; `script -qec 'target/debug/game2048 --self-test-tui --seed 42 --no-persist' /dev/null` exits 0.
 - **M3 Shader-style effects.** Plasma background, merge shockwave, sparks, tile flash, spawn pop, new-best pulse, fixed-step frame contract, effect snapshot frames at 100x36. *Gate:* `make check` green including effect snapshots at frames 4/14/24; `cargo run -- --render-once --demo-merge --frame 14 --no-persist` exits 0 and shows merge effect characters; `make e2e` writes the frame captures.
 - **M4 Polish and handover.** README, clean-clone run, full e2e, acceptance evidence. *Gate:* `make check` and `make e2e` green on a clean clone (`git clone . /tmp/2048-clean && cd /tmp/2048-clean && make check && make e2e`); `docs/EVIDENCE.md` has a row for every acceptance ID.
+- **M5 Prettier board and real 60 FPS.** 9x5 cards with the value on the true middle row, the play-area frame with `SCORE` and `BEST` on its top edge, default 60 FPS with deadline pacing, measured self-test line, `make e2e` captures moved to `docs/evidence/e2e/`. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "SCORE 0" && cargo run --quiet -- --render-once --seed 42 --no-persist | grep -q "BEST 0" && script -qec "./target/debug/game2048 --self-test-tui --seed 42 --no-persist --fps 60" /dev/null | grep -Eq "self-test-tui: 120 frames in [0-9]+\.[0-9][0-9]s \(([5-6][0-9]) fps\)"'` exits 0.
+- **M6 Score count-up.** The displayed score chases the real score with the 450 ms ease-out of section 5.7: re-target from the shown value, restart resets it, `BEST` jumps at once, `--dump` stays real, and one accessor feeds the panel and the game-over overlay. *Gate:* `bash -o pipefail -c 'make check && cargo run --quiet -- --render-once --demo-merge --frame 4 --no-persist | grep -q "SCORE 1" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "SCORE 3" && cargo run --quiet -- --render-once --demo-merge --frame 30 --no-persist | grep -q "SCORE 4" && cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist | grep -q "BEST 4" && cargo run --quiet -- --dump --seed 42 | diff -q - tests/fixtures/dump_seed42.txt'` exits 0.
+- **M7 Merge ripple.** Replace the shockwave with the bouncing, fading ripple of section 5.4, keep sparks/flash/pop, update the effect snapshots and captures. *Gate:* `make check` green including the ripple tests and effect snapshots; `cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist` exits 0 and its output contains `▓` and `▒`; `make e2e` green.
+- **M8 Arcade high-score table.** Named table (section 5.3), name entry after game over (section 5.5), score panel on wide terminals and `H` overlay otherwise, legacy `highscore` migration, restart proof. *Gate:* `make check` green including the storage, entry and restart suites; `cargo run --quiet -- --dump --seed 42 --no-persist` still prints the exact block in section 5.6; the restart test proves a named entry survives a real process restart through `$XDG_DATA_HOME`; `cargo run --quiet -- --render-once --seed 42 --no-persist` shows the table heading.
+- **M9 Handover refresh.** README, acceptance rows, clean-clone gate for M5-M8, no stale evidence pointers. *Gate:* `bash -o pipefail -c 'rm -rf /tmp/2048-clean && git clone . /tmp/2048-clean && cd /tmp/2048-clean && make check && make e2e && test -z "$(git status --porcelain)"'` exits 0; every acceptance row A1-A11 is complete in `docs/EVIDENCE.md`.
 
 ## 9. Acceptance checklist (IDs referenced in EVIDENCE.md)
 - **A1** At 100x36 and 60x30 the UI renders without panic, overlap or truncation (snapshot tests + reported dimensions).
 - **A2** All keys in section 5.5 are covered by input tests, including win/game-over blocking.
-- **A3** High score survives a process restart through the real file path (isolated `XDG_DATA_HOME` e2e); demo/no-persist never write it.
-- **A4** Merge effects are visible and deterministic at frames 4/14/24 after a merge; plasma, sparks and flash are present; effects do not alter rules or RNG.
+- **A3** The high-score table survives a process restart through the real file path (isolated `XDG_DATA_HOME` e2e); demo/no-persist never write it.
+- **A4** Merge effects are visible and deterministic at the pinned frames after a merge; plasma, sparks and flash are present; effects do not alter rules or RNG.
 - **A5** The terminal is restored after normal quit and after a simulated panic; `--self-test-tui` exits 0.
 - **A6** `make check` and `make e2e` are green; every requirement has evidence.
+- **A7** At 100x36 and 60x30 the play-area frame is exactly 41x25, the cards are 9x5 with one-cell gaps, and every tile value sits on its card's middle row, centred within one cell (M5).
+- **A8** The live loop and the self-test pace to a 60 FPS deadline: `--self-test-tui --fps 60` prints a measured rate of 50-69 fps for 120 frames (M5).
+- **A9** The displayed score follows the G14/G15 values, re-targets from the shown value, never exceeds the real score, resets on restart, and leaves `BEST` immediate while `--dump` prints the real score (M6).
+- **A10** The merge ripple is visible, deterministic, reflects off at least one play-area wall and fades through `▓` -> `▒` -> `░` before it expires (M7).
+- **A11** A named score entered after game over is stored, reloaded and displayed in the table after a restart (M8).
 
 ## 10. Final report format
 (1) Filled `docs/EVIDENCE.md`; (2) list of anything unverified or blocked, with reasons; (3) exact steps to run the game and where the high score is stored.
