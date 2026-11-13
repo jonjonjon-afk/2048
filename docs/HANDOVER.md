@@ -105,9 +105,13 @@ store. Board scoring/merging lives only in `game`, the table format only in
 `highscore`, layout only in `render`.
 
 ## Where the proof lives
-- `docs/evidence/ACCEPTANCE.md` — fresh A1-A11 proof: current test names, the
-  command run through `scripts/ev.sh`, the filtered result line and exit code.
-- `docs/EVIDENCE.md` — acceptance ID -> test -> `ACCEPTANCE.md` label map.
+- `docs/evidence/ACCEPTANCE.md` — the raw A1-A11 acceptance log, written by
+  `scripts/ev.sh ACCEPTANCE "<label>" -- <command>`: each block is an
+  `### ACC A<n> ...` heading, a `date:`, the real `$` command and its output and
+  exit code.
+- `docs/EVIDENCE.md` — acceptance ID -> tests -> `ACC A<n>` raw-log label map.
+- `docs/evidence/M12.md` — the M12 cleanup and gate log (R1-R8, size and pointer
+  audits, the exact gate); its duplicate A blocks are not cited.
 - `docs/HISTORY.md` — one line per milestone M0-M11 with verdict, final commit
   and gate result.
 - `docs/api-notes.md` — verified external facts with sources.

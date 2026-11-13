@@ -1,10 +1,12 @@
 # EVIDENCE — acceptance ID -> proof
 
-> Owned by the coder. Current proof lives in `docs/evidence/ACCEPTANCE.md`
-> (fresh A1-A11 runs, 2026-11-13). Historical per-milestone logs were removed in
-> M12 but remain in git history (`docs/HISTORY.md` lists the commits).
+> Owned by the coder. Current proof lives in `docs/evidence/ACCEPTANCE.md`, which
+> is the raw `scripts/ev.sh` acceptance log (labels `ACC A1` ... `ACC A11`).
+> Historical per-milestone logs were removed in M12 but remain in git history
+> (`docs/HISTORY.md` lists the commits); the cleanup/gate log is
+> `docs/evidence/M12.md`.
 
-| ID | What it proves | Current tests | Proof (ACCEPTANCE.md label) |
+| ID | What it proves | Current tests | Proof (raw-log label) |
 |---|---|---|---|
 | A1 | 100x36 and 60x30 render without panic, overlap or truncation; too-small notice | `render_100x36_matches_the_snapshot`, `render_60x30_matches_the_snapshot`, `card_geometry_is_9x5_with_one_cell_gaps`, `too_small_terminal_shows_a_notice` | "ACC A1 layout and snapshots" |
 | A2 | every §5.5 key, including win/game-over/table/name-entry blocking | `input::tests` (10), `update::tests` (12) | "ACC A2 keys and blocking" |
