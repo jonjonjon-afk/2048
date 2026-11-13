@@ -94,7 +94,27 @@ date: 2026-11-13T16:12:39Z
 
 ### A6 — Clean-clone `make check` + `make e2e`
 
-**PENDING** — block `ACC A6 clean-clone gate` not captured yet.
+**Tests:** a fresh `git clone . /tmp/2048-clean`; `make check`, `make e2e`, then `git status --porcelain`
+
+**Expected:** 147 tests, 0 failed; e2e exits 0; the clone status is empty because the regenerated `docs/evidence/e2e/` is ignored.
+
+**Proof label:** `ACC A6 clean-clone gate` (in `docs/evidence/M12.md`)
+
+```text
+$ bash -o pipefail -c 'rm -rf /tmp/2048-clean && git clone -q . /tmp/2048-clean && cd /tmp/2048-clean && make check 2>&1 | grep -E "^(test result|error)" && make e2e >/dev/null 2>&1 && echo "make e2e: exit 0" && test -z "$(git status --porcelain)" && echo "clone git status: clean"'
+test result: ok. 99 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+make e2e: exit 0
+clone git status: clean
+
+[exit code: 0]
+```
+date: 2026-11-13T16:14:07Z
 
 ### A7 — Card geometry and label row
 
