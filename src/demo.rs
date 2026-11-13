@@ -115,6 +115,13 @@ mod tests {
         // cell with its own value.
         let spawn = at_three.game.last_spawn.expect("the demo move spawns");
         assert_eq!(settled.cell(spawn.cell), spawn.value);
+        // F6: hand-derived from SPEC 5.2 with seed 42 (draw1 % 12 = 0 ->
+        // empties[0] = cell 0, draw2 % 10 = 8 -> value 2).
+        assert_eq!(
+            at_three.game.last_spawn,
+            Some(Spawn { cell: 0, value: 2 }),
+            "seed-42 spawn, derived in R6"
+        );
     }
 
     #[test]
