@@ -10,8 +10,9 @@
   `docs/evidence/ACCEPTANCE.md` replace them. Git history keeps every old file.
 - `make check`: **147 tests, 0 failed** (99 lib + 12 CLI + 28 effects + 1
   restart + 7 score). `make e2e` is clean against the fixtures.
-- M12 gate: **exit 0** at commit `4ec9adb` (local and clean clone 147/0, clone
-  `make e2e` green, clone status empty). Proof: `docs/evidence/M12.md` "M12 gate".
+- M12 gate: **exit 0** at commit `bdd89a2` round 2 (local and clean clone 147/0,
+  clone `make e2e` green, clone status empty). Proof: `docs/evidence/M12.md`
+  "M12 round 2 gate"; pointer check "F3 pointer check" is 11/11, 0 dangling.
 - No next action: stop at the M12 gate and await the reviewer's verdict.
 
 ## Milestones
@@ -41,4 +42,4 @@
 | R6 | docs-only diff; fixtures, code, Makefile and Cargo untouched; 147 tests |
 | R7 | before/after doc size recorded in `docs/evidence/M12.md` |
 | R8 | workflow files, templates, tests and src untouched; SPEC diff is the M12 line |
-| Gate | exact SPEC §8 command exit 0 at `4ec9adb` (proof: `docs/evidence/M12.md` "M12 gate") |
+| Gate | exact SPEC §8 command exit 0 at `bdd89a2` round 2 (proof: `docs/evidence/M12.md` "M12 round 2 gate") |
