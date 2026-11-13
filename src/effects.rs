@@ -23,10 +23,20 @@ pub const RIPPLE_FRONT_WINDOW: f64 = 0.75;
 pub const RIPPLE_ROW_ASPECT: f64 = 2.0;
 /// Amplitude factor applied for each play-area wall an image is mirrored across.
 pub const RIPPLE_WALL_FACTOR: f64 = 0.55;
-/// Ripple glyphs, strongest first, with the minimum amplitude for each.
+/// Ripple glyphs for the M10 cell-centre accessors, strongest first, with the
+/// minimum amplitude for each. M11 no longer renders these classes.
 pub const RIPPLE_THRESHOLDS: [(char, f64); 3] = [('▓', 0.55), ('▒', 0.30), ('░', 0.10)];
-/// The three ripple glyphs, strongest first.
+/// The three M10 cell-centre glyphs, strongest first.
 pub const RIPPLE_SYMBOLS: [char; 3] = ['▓', '▒', '░'];
+/// Half-cell sampling offset: the top half is sampled at `y - 0.25` and the
+/// bottom half at `y + 0.25` (SPEC 5.4, M11).
+pub const RIPPLE_HALF_OFFSET: f64 = 0.25;
+/// A half-cell is lit when its amplitude is at least this value (SPEC 5.4).
+pub const RIPPLE_LIT_THRESHOLD: f64 = 0.10;
+/// Upper half block: a lit top half, either alone or over a lit bottom half.
+pub const RIPPLE_TOP_GLYPH: char = '▀';
+/// Lower half block: a lit bottom half with an unlit top half.
+pub const RIPPLE_BOTTOM_GLYPH: char = '▄';
 /// Play-area width in cells (`x` in `0..=38`).
 pub const PLAY_WIDTH: f64 = 39.0;
 /// Play-area height in cells (`y` in `0..=22`).
@@ -76,6 +86,27 @@ pub struct Ripple {
     pub age: Duration,
 }
 
+/// Top- and bottom-half amplitudes at one play-area cell (SPEC 5.4, M11).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HalfAmplitudes {
+    /// Strongest amplitude sampled at `(x, y - 0.25)`.
+    pub top: f64,
+    /// Strongest amplitude sampled at `(x, y + 0.25)`.
+    pub bottom: f64,
+}
+
+impl HalfAmplitudes {
+    /// True when the top half is bright enough to be drawn.
+    pub fn top_lit(&self) -> bool {
+        self.top >= RIPPLE_LIT_THRESHOLD
+    }
+
+    /// True when the bottom half is bright enough to be drawn.
+    pub fn bottom_lit(&self) -> bool {
+        self.bottom >= RIPPLE_LIT_THRESHOLD
+    }
+}
+
 impl Ripple {
     /// Wavefront radius in play-area cells, with no rounding (SPEC 5.4).
     pub fn radius(&self) -> f64 {
@@ -118,17 +149,35 @@ impl Ripple {
         images
     }
 
-    /// The strongest amplitude this wave reaches at play-area cell `(x, y)`.
+    /// The strongest amplitude this wave reaches at play-area cell `(x, y)`,
+    /// sampled at the cell centre.
     ///
-    /// A cell is on the front for an image when its aspect-corrected Euclidean
+    /// A point is on the front for an image when its aspect-corrected Euclidean
     /// distance to that image is within [`RIPPLE_FRONT_WINDOW`] of the radius.
     /// One row is [`RIPPLE_ROW_ASPECT`] columns of visual length, so the crest
     /// reads round on a 1:2 terminal cell instead of square.
     pub fn amplitude_at(&self, x: i32, y: i32) -> f64 {
-        let radius = self.radius();
-        let base = self.amplitude();
+        self.amplitude_at_point(f64::from(x), f64::from(y))
+    }
+
+    /// The top- and bottom-half amplitudes at play-area cell `(x, y)`.
+    ///
+    /// The halves are sampled at `(x, y - 0.25)` and `(x, y + 0.25)` with the
+    /// same nine images, aspect-corrected metric and wall factor; M11 draws the
+    /// front from these values instead of the cell centre.
+    pub fn halves_at(&self, x: i32, y: i32) -> HalfAmplitudes {
         let x = f64::from(x);
         let y = f64::from(y);
+        HalfAmplitudes {
+            top: self.amplitude_at_point(x, y - RIPPLE_HALF_OFFSET),
+            bottom: self.amplitude_at_point(x, y + RIPPLE_HALF_OFFSET),
+        }
+    }
+
+    /// Strongest amplitude at an arbitrary float play-area point.
+    fn amplitude_at_point(&self, x: f64, y: f64) -> f64 {
+        let radius = self.radius();
+        let base = self.amplitude();
 
         self.images()
             .iter()

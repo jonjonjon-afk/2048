@@ -12,7 +12,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{Frame, Terminal};
 
-use crate::effects::{Ripple, Spark};
+use crate::effects::{Ripple, Spark, RIPPLE_BOTTOM_GLYPH, RIPPLE_TOP_GLYPH};
 use crate::highscore::NAME_MAX_LEN;
 use crate::update::App;
 
@@ -356,20 +356,37 @@ fn render_effects(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Draw one wave in half-cell subcells (SPEC 5.4, M11).
+///
+/// A lit top half is the foreground, a lit bottom half is the background of
+/// the same cell, and an unlit half stays the renderer background. Both halves
+/// share the `▀` glyph; a bottom-only cell uses `▄`.
 fn draw_ripple(buffer: &mut Buffer, board: Rect, ripple: &Ripple) {
     let colour = tile_colour(ripple.value);
 
     for y in 0..BOARD_HEIGHT as i32 {
         for x in 0..BOARD_WIDTH as i32 {
-            let Some((glyph, amplitude)) = ripple.front_at(x, y) else {
-                continue;
+            let halves = ripple.halves_at(x, y);
+            let (glyph, fg, bg) = match (halves.top_lit(), halves.bottom_lit()) {
+                (false, false) => continue,
+                (true, false) => (
+                    RIPPLE_TOP_GLYPH,
+                    dimmed_colour(colour, halves.top),
+                    BACKGROUND,
+                ),
+                (false, true) => (
+                    RIPPLE_BOTTOM_GLYPH,
+                    dimmed_colour(colour, halves.bottom),
+                    BACKGROUND,
+                ),
+                (true, true) => (
+                    RIPPLE_TOP_GLYPH,
+                    dimmed_colour(colour, halves.top),
+                    dimmed_colour(colour, halves.bottom),
+                ),
             };
             if let Some(cell) = buffer.cell_mut((board.x + x as u16, board.y + y as u16)) {
-                cell.set_char(glyph).set_style(
-                    Style::new()
-                        .fg(dimmed_colour(colour, amplitude))
-                        .bg(BACKGROUND),
-                );
+                cell.set_char(glyph).set_style(Style::new().fg(fg).bg(bg));
             }
         }
     }

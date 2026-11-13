@@ -9,8 +9,9 @@ use std::time::Duration;
 use game2048::demo::demo_merge_app;
 use game2048::effects::{
     Effects, BEST_PULSE_MILLIS, CELL_CENTRE_X, CELL_CENTRE_Y, CELL_PITCH_X, CELL_PITCH_Y,
-    FLASH_MILLIS, POP_MILLIS, RIPPLE_FRONT_WINDOW, RIPPLE_ROW_ASPECT, RIPPLE_SYMBOLS,
-    RIPPLE_WALL_FACTOR, SPARKS_PER_MERGE, SPARK_MILLIS, SPARK_SYMBOLS,
+    FLASH_MILLIS, POP_MILLIS, RIPPLE_BOTTOM_GLYPH, RIPPLE_FRONT_WINDOW, RIPPLE_LIT_THRESHOLD,
+    RIPPLE_ROW_ASPECT, RIPPLE_TOP_GLYPH, RIPPLE_WALL_FACTOR, SPARKS_PER_MERGE, SPARK_MILLIS,
+    SPARK_SYMBOLS,
 };
 use game2048::game::{Board, Direction, Game, Merge};
 use game2048::render::{
@@ -94,13 +95,25 @@ fn play_cell(buffer: &Buffer, x: i32, y: i32) -> char {
     buffer[(column, row)].symbol().chars().next().unwrap_or(' ')
 }
 
+/// True for the two half-block glyphs the M11 ripple renders.
+fn is_ripple_glyph(glyph: char) -> bool {
+    glyph == RIPPLE_TOP_GLYPH || glyph == RIPPLE_BOTTOM_GLYPH
+}
+
+/// The foreground and background of one play-area cell, as drawn.
+fn play_style(buffer: &Buffer, x: i32, y: i32) -> (Color, Color) {
+    let panel = panel_layout(WIDTH, HEIGHT);
+    let cell = &buffer[(panel.left + 1 + x as u16, panel.top + 1 + y as u16)];
+    (cell.fg, cell.bg)
+}
+
 /// Every ripple glyph inside the 39x23 play area, with its play-area cell.
 fn ripple_cells(buffer: &Buffer) -> Vec<(i32, i32, char)> {
     let mut cells = Vec::new();
     for y in 0..PLAY_HEIGHT {
         for x in 0..PLAY_WIDTH {
             let glyph = play_cell(buffer, x, y);
-            if RIPPLE_SYMBOLS.contains(&glyph) {
+            if is_ripple_glyph(glyph) {
                 cells.push((x, y, glyph));
             }
         }
@@ -292,34 +305,121 @@ fn ripple_radius_matches_the_spec_at_every_pin() {
     assert_eq!(RIPPLE_WALL_FACTOR, 0.55);
 }
 
+/// One M11 hand-table row: age, play-area cell, drawn glyph, top/bottom amp.
+type SubcellPin = (u64, i32, i32, Option<char>, f64, f64);
+
+#[test]
+fn ripple_halves_match_the_subcell_table() {
+    // M11 hand table. `None` means the frame cell carries no ripple glyph; a
+    // digit or a spark may still own that cell (the label layer draws last).
+    let table: &[SubcellPin] = &[
+        (100, 0, 2, Some('▀'), 0.888889, 0.888889),
+        (100, 5, 5, Some('▀'), 0.888889, 0.0),
+        (100, 3, 0, Some('▄'), 0.0, 0.888889),
+        (100, 0, 4, None, 0.0, 0.0),
+        (100, 4, 2, None, 0.0, 0.0),
+        (100, 20, 12, None, 0.0, 0.0),
+        (150, 10, 2, Some('▀'), 0.833333, 0.833333),
+        (150, 0, 2, Some('▀'), 0.458333, 0.458333),
+        (150, 0, 0, Some('▄'), 0.0, 0.833333),
+        (224, 13, 2, Some('▀'), 0.751111, 0.751111),
+        (224, 2, 5, Some('▀'), 0.413111, 0.413111),
+        (224, 7, 1, Some('▀'), 0.413111, 0.0),
+        (224, 2, 4, Some('▄'), 0.0, 0.413111),
+        (224, 13, 10, None, 0.0, 0.0),
+        (480, 23, 2, Some('▀'), 0.466667, 0.466667),
+        (480, 13, 2, Some('▀'), 0.256667, 0.256667),
+        (480, 9, 2, Some('▄'), 0.0, 0.141167),
+        (480, 5, 5, Some('▀'), 0.141167, 0.0),
+        (700, 32, 2, Some('▀'), 0.222222, 0.222222),
+        (700, 13, 10, Some('▀'), 0.122222, 0.0),
+        (700, 23, 2, Some('▀'), 0.122222, 0.122222),
+    ];
+
+    assert_eq!(RIPPLE_LIT_THRESHOLD, 0.10, "a half is lit at >= 0.10");
+
+    let mut current = u64::MAX;
+    let mut ripple = app_at(0).effects.ripples()[0];
+    let mut buffer = frame_buffer(&app_at(0), WIDTH, HEIGHT);
+    for &(millis, x, y, glyph, top, bottom) in table {
+        if millis != current {
+            let app = app_at(millis);
+            ripple = app.effects.ripples()[0];
+            buffer = frame_buffer(&app, WIDTH, HEIGHT);
+            current = millis;
+        }
+
+        let halves = ripple.halves_at(x, y);
+        assert!(
+            (halves.top - top).abs() < 1e-6,
+            "{millis} ms ({x},{y}) top amplitude {} != {top}",
+            halves.top
+        );
+        assert!(
+            (halves.bottom - bottom).abs() < 1e-6,
+            "{millis} ms ({x},{y}) bottom amplitude {} != {bottom}",
+            halves.bottom
+        );
+        let drawn = play_cell(&buffer, x, y);
+        match glyph {
+            Some(expected) => assert_eq!(drawn, expected, "{millis} ms ({x},{y}) glyph"),
+            None => assert!(
+                !is_ripple_glyph(drawn),
+                "{millis} ms ({x},{y}) must carry no half block, found {drawn:?}"
+            ),
+        }
+    }
+
+    // At 880 ms the base amplitude is 0.0222, below every lit half.
+    assert!(
+        ripple_cells(&frame_buffer(&app_at(880), WIDTH, HEIGHT)).is_empty(),
+        "880 ms must show no half block"
+    );
+
+    // R2: the old three glyph classes are gone from the whole frame.
+    for millis in [100u64, 150, 224, 480, 700, 880] {
+        let text = frame_text(&app_at(millis), WIDTH, HEIGHT);
+        for stale in ['▓', '▒', '░'] {
+            assert!(
+                !text.contains(stale),
+                "{millis} ms frame still contains {stale:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn ripple_front_at_100ms_matches_the_round_hand_table() {
     let buffer = frame_buffer(&app_at(100), WIDTH, HEIGHT);
 
-    assert_eq!(play_cell(&buffer, 0, 2), '▓', "(0,2) is the direct front");
-    assert_eq!(play_cell(&buffer, 9, 2), '▓', "(9,2) is the direct front");
-    assert_eq!(play_cell(&buffer, 7, 1), '▓', "(7,1) is on the round front");
-    assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 0, 4)),
-        "(0,4) is off the round front (a square would light it)"
+    assert_eq!(
+        play_cell(&buffer, 0, 2),
+        '▀',
+        "(0,2) is direct, both halves"
     );
-    assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 4, 2)),
-        "(4,2) is inside the ring, not on it"
+    assert_eq!(
+        play_cell(&buffer, 9, 2),
+        '▀',
+        "(9,2) is direct, both halves"
     );
-    assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 5, 5)),
-        "(5,5) is inside the ring, not on it"
+    assert_eq!(play_cell(&buffer, 7, 1), '▀', "(7,1) is on the round front");
+    assert_eq!(
+        play_cell(&buffer, 5, 5),
+        '▀',
+        "(5,5) is top-half only (G19: the cell centre is off the front)"
     );
-    assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 20, 12)),
-        "(20,12) is outside the ring"
-    );
+    assert_eq!(play_cell(&buffer, 3, 0), '▄', "(3,0) is bottom-half only");
+    for (x, y) in [(0, 4), (4, 2), (20, 12)] {
+        assert!(
+            !is_ripple_glyph(play_cell(&buffer, x, y)),
+            "({x},{y}) is off the round front"
+        );
+    }
 
-    // The front is a ring: the centre cell is not painted by the wave alone.
+    // The effect layer keeps the M10 cell-centre pins.
     let app = app_at(100);
     let ripple = app.effects.ripples()[0];
-    assert!(ripple.glyph_at(7, 1).is_some());
+    assert_eq!(ripple.glyph_at(7, 1), Some('▓'));
     assert!(ripple.glyph_at(0, 4).is_none());
     assert!(ripple.glyph_at(0, 2).is_some());
     assert!(ripple.glyph_at(5, 5).is_none());
@@ -336,13 +436,14 @@ fn ripple_is_round_not_square() {
     assert_eq!(ripple.glyph_at(7, 1), Some('▓'), "100 ms (7,1)");
     assert_eq!(ripple.glyph_at(0, 4), None, "100 ms (0,4)");
     let buffer = frame_buffer(&at_100, WIDTH, HEIGHT);
-    assert_eq!(play_cell(&buffer, 7, 1), '▓', "100 ms (7,1) in the frame");
+    assert_eq!(play_cell(&buffer, 7, 1), '▀', "100 ms (7,1) in the frame");
     assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 0, 4)),
+        !is_ripple_glyph(play_cell(&buffer, 0, 4)),
         "100 ms (0,4) is blank in the frame"
     );
 
-    // 150 ms: the direct front reaches (0,0) at d=6.727.
+    // 150 ms: the direct front reaches (0,0) at d=6.727; only the bottom
+    // half-cell centre is within the window, so it draws a lower half block.
     let at_150 = app_at(150);
     assert_eq!(
         at_150.effects.ripples()[0].glyph_at(0, 0),
@@ -351,7 +452,7 @@ fn ripple_is_round_not_square() {
     );
     assert_eq!(
         play_cell(&frame_buffer(&at_150, WIDTH, HEIGHT), 0, 0),
-        '▓',
+        '▄',
         "150 ms (0,0) in the frame"
     );
 
@@ -369,9 +470,9 @@ fn ripple_is_round_not_square() {
         "224 ms (13,10)"
     );
     let buffer = frame_buffer(&at_224, WIDTH, HEIGHT);
-    assert_eq!(play_cell(&buffer, 13, 2), '▓', "224 ms (13,2) in the frame");
+    assert_eq!(play_cell(&buffer, 13, 2), '▀', "224 ms (13,2) in the frame");
     assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 13, 10)),
+        !is_ripple_glyph(play_cell(&buffer, 13, 10)),
         "224 ms (13,10) is blank in the frame"
     );
 }
@@ -379,10 +480,10 @@ fn ripple_is_round_not_square() {
 #[test]
 fn ripple_reflects_off_the_left_wall() {
     let at_150 = frame_buffer(&app_at(150), WIDTH, HEIGHT);
-    assert_eq!(play_cell(&at_150, 10, 2), '▓', "(10,2) direct at 150 ms");
+    assert_eq!(play_cell(&at_150, 10, 2), '▀', "(10,2) direct at 150 ms");
     assert_eq!(
         play_cell(&at_150, 0, 2),
-        '▒',
+        '▀',
         "(0,2) is the left-wall image at 150 ms"
     );
 
@@ -398,37 +499,59 @@ fn ripple_reflects_off_the_left_wall() {
     );
 
     let at_224 = frame_buffer(&at_224, WIDTH, HEIGHT);
-    assert_eq!(play_cell(&at_224, 13, 2), '▓', "(13,2) direct at 224 ms");
+    assert_eq!(play_cell(&at_224, 13, 2), '▀', "(13,2) direct at 224 ms");
     assert_eq!(
         play_cell(&at_224, 2, 5),
-        '▒',
+        '▀',
         "(2,5) is the rendered left-wall image at 224 ms"
     );
+    assert_eq!(
+        play_cell(&at_224, 7, 1),
+        '▀',
+        "(7,1) is the top-wall image at 224 ms"
+    );
+    assert_eq!(
+        play_cell(&at_224, 2, 4),
+        '▄',
+        "(2,4) is the bottom-half-only left-wall image at 224 ms"
+    );
     assert!(
-        !RIPPLE_SYMBOLS.contains(&play_cell(&at_224, 9, 2)),
+        !is_ripple_glyph(play_cell(&at_224, 9, 2)),
         "(9,2) sits in the gap between the direct and reflected crests"
     );
 }
 
 #[test]
-fn ripple_fades_to_sta_and_expires_at_900ms() {
+fn ripple_fades_out_and_expires_at_900ms() {
     let at_480 = frame_buffer(&app_at(480), WIDTH, HEIGHT);
-    assert_eq!(play_cell(&at_480, 23, 2), '▒', "(23,2) at 480 ms");
+    assert_eq!(play_cell(&at_480, 23, 2), '▀', "(23,2) at 480 ms");
     assert_eq!(
         play_cell(&at_480, 13, 2),
-        '░',
-        "(13,2) is the weak left-wall image at 480 ms"
+        '▀',
+        "(13,2) is the left-wall image at 480 ms"
+    );
+    assert_eq!(
+        play_cell(&at_480, 9, 2),
+        '▄',
+        "(9,2) is the two-wall bottom half at 480 ms"
+    );
+    assert_eq!(
+        play_cell(&at_480, 5, 5),
+        '▀',
+        "(5,5) is the two-wall top half at 480 ms"
     );
 
     let at_700 = frame_buffer(&app_at(700), WIDTH, HEIGHT);
-    assert_eq!(play_cell(&at_700, 32, 2), '░', "(32,2) at 700 ms");
-    let strong: Vec<(i32, i32, char)> = ripple_cells(&at_700)
-        .into_iter()
-        .filter(|(_, _, glyph)| *glyph == '▓' || *glyph == '▒')
-        .collect();
-    assert!(
-        strong.is_empty(),
-        "700 ms must show no ▓ or ▒ anywhere, found {strong:?}"
+    assert_eq!(play_cell(&at_700, 32, 2), '▀', "(32,2) at 700 ms");
+    assert_eq!(
+        play_cell(&at_700, 13, 10),
+        '▀',
+        "(13,10) is the top-wall image at 700 ms"
+    );
+    assert_eq!(
+        play_cell(&at_700, 23, 2),
+        '▀',
+        "(23,2) is the left-wall image at 700 ms"
     );
 
     let at_880 = frame_buffer(&app_at(880), WIDTH, HEIGHT);
@@ -541,7 +664,7 @@ fn tile_digits_stay_on_top_of_the_ripple() {
 
     // Frame 14: the ripple is still drawn over the cards where no label sits.
     let buffer = frame_buffer(&demo_merge_app(14), WIDTH, HEIGHT);
-    assert_eq!(play_cell(&buffer, 13, 2), '▓', "frame 14 ripple at (13,2)");
+    assert_eq!(play_cell(&buffer, 13, 2), '▀', "frame 14 ripple at (13,2)");
     let ripple = demo_merge_app(14).effects.ripples()[0];
     assert_eq!(
         ripple.glyph_at(4, 2),
@@ -553,35 +676,63 @@ fn tile_digits_stay_on_top_of_the_ripple() {
 
 #[test]
 fn ripple_colour_fades_with_age() {
-    let panel = panel_layout(WIDTH, HEIGHT);
-    let colour_at = |millis: u64, x: i32, y: i32| -> Color {
-        let buffer = frame_buffer(&app_at(millis), WIDTH, HEIGHT);
-        buffer[(panel.left + 1 + x as u16, panel.top + 1 + y as u16)].fg
+    let style_at = |millis: u64, x: i32, y: i32| -> (Color, Color) {
+        play_style(&frame_buffer(&app_at(millis), WIDTH, HEIGHT), x, y)
     };
+    let background = Color::Rgb(6, 8, 20);
 
     // SPEC 5.4 Brightness: fg = bg + (colour - bg) * amplitude, rounded, with
-    // bg = Rgb(6, 8, 20) and the value-4 colour Rgb(0, 200, 255).
-    let direct_224 = colour_at(224, 13, 2);
-    assert_eq!(direct_224, Color::Rgb(1, 152, 197), "224 ms direct crest");
+    // bg = Rgb(6, 8, 20) and the value-4 colour Rgb(0, 200, 255). A both-lit
+    // cell has fg = top colour and bg = bottom colour.
+    let direct_224 = Color::Rgb(1, 152, 197);
     assert_eq!(
-        colour_at(224, 2, 5),
-        Color::Rgb(4, 87, 117),
-        "224 ms left-wall crest"
+        style_at(224, 13, 2),
+        (direct_224, direct_224),
+        "224 ms direct crest, both halves"
     );
+    let reflected_224 = Color::Rgb(4, 87, 117);
     assert_eq!(
-        colour_at(480, 23, 2),
-        Color::Rgb(3, 98, 130),
-        "480 ms direct crest"
+        style_at(224, 2, 5),
+        (reflected_224, reflected_224),
+        "224 ms left-wall crest, both halves"
     );
+    let direct_480 = Color::Rgb(3, 98, 130);
     assert_eq!(
-        colour_at(700, 32, 2),
-        Color::Rgb(5, 51, 72),
-        "700 ms direct crest"
+        style_at(480, 23, 2),
+        (direct_480, direct_480),
+        "480 ms direct crest, both halves"
+    );
+    let direct_700 = Color::Rgb(5, 51, 72);
+    assert_eq!(
+        style_at(700, 32, 2),
+        (direct_700, direct_700),
+        "700 ms direct crest, both halves"
     );
 
-    let reflected_224 = color_luma(colour_at(224, 2, 5));
+    // One-half cells: the lit half is the foreground, the unlit half is the
+    // renderer background.
+    assert_eq!(
+        style_at(224, 7, 1),
+        (reflected_224, background),
+        "224 ms top-half-only wall crest"
+    );
+    assert_eq!(
+        style_at(100, 3, 0),
+        (Color::Rgb(1, 179, 229), background),
+        "100 ms bottom-half-only direct crest"
+    );
+
+    // A two-colour cell: top = the 150 ms left-wall image (0.458333), bottom
+    // = the direct image (0.833333). See the deviation note: R3's literals for
+    // this cell are arithmetically impossible at 150 ms (Q16).
+    assert_eq!(
+        style_at(150, 0, 4),
+        (Color::Rgb(3, 96, 128), Color::Rgb(1, 168, 216)),
+        "150 ms two-colour cell"
+    );
+
     assert!(
-        color_luma(direct_224) > reflected_224,
+        color_luma(direct_224) > color_luma(reflected_224),
         "the 224 ms direct crest must be brighter than the reflected crest"
     );
 }
