@@ -304,18 +304,19 @@ fn cell_origin(layout: BoardLayout, cell: usize) -> Rect {
 
 fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
     let layout = board_layout(area.width, area.height);
+    let sliding = app.sliding();
 
     for cell in 0..16 {
         // While the slide runs every slot is an empty card and the moving
         // cards are painted later, after the effect layer (SPEC 5.4, M13).
-        // A jiggling merged cell draws its card at the offset in the second
-        // pass below, so its slot is left alone here.
-        let sliding = app.sliding();
-        if !sliding && app.jiggle_dx(cell).is_some() {
-            continue;
-        }
+        // A jiggling merged cell leaves an empty card in its slot; its body is
+        // painted in the second pass below, still in the card layer.
         let origin = cell_origin(layout, cell);
-        let value = if sliding { 0 } else { app.game.board.cell(cell) };
+        let value = if sliding || app.jiggle_dx(cell).is_some() {
+            0
+        } else {
+            app.game.board.cell(cell)
+        };
         let bright =
             !sliding && (app.effects.is_flashing(cell) || app.effects.is_popping(cell));
         let border = if bright {
@@ -328,6 +329,23 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
             .border_type(BorderType::Rounded)
             .border_style(border);
         frame.render_widget(card, origin);
+    }
+
+    if sliding {
+        return;
+    }
+
+    // F2: a wobbling merged card's opaque body stays in the card layer, so the
+    // ripple crosses it exactly as it crosses a settled card; only its label
+    // is deferred to the label layer (SPEC 5.4 Layering).
+    for cell in 0..16 {
+        let value = app.game.board.cell(cell);
+        let Some(dx) = app.jiggle_dx(cell) else {
+            continue;
+        };
+        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
+        let (x, y) = jiggle_anchor(layout, cell, dx);
+        draw_card_body(frame, x, y, value, bright);
     }
 }
 
@@ -364,38 +382,22 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
 
     let layout = board_layout(area.width, area.height);
 
-    // A jiggling merged card and its label move together, so draw the whole
-    // card at the clamped offset after the effect layer (SPEC 5.4, M13).
+    // A jiggling card's body lives in the card layer; only its label is drawn
+    // here, at the same clamped offset, after the effect layer (F2).
     for cell in 0..16 {
         let value = app.game.board.cell(cell);
         if value == 0 {
             continue;
         }
-        let Some(dx) = app.jiggle_dx(cell) else {
-            continue;
+        let (x, y) = match app.jiggle_dx(cell) {
+            Some(dx) => jiggle_anchor(layout, cell, dx),
+            None => {
+                let origin = cell_origin(layout, cell);
+                (i32::from(origin.x), i32::from(origin.y))
+            }
         };
-        let (x, y) = jiggle_anchor(layout, cell, dx);
         let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
-        draw_tile_card(frame, x, y, value, bright);
-    }
-
-    for cell in 0..16 {
-        let value = app.game.board.cell(cell);
-        if value == 0 || app.jiggle_dx(cell).is_some() {
-            continue;
-        }
-        let origin = cell_origin(layout, cell);
-        let inner = Rect::new(origin.x + 1, origin.y + CARD_HEIGHT / 2, LABEL_WIDTH, 1);
-        let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
-        let style = if bright {
-            bright_tile_style(value)
-        } else {
-            tile_style(value)
-        };
-        let label = Paragraph::new(value.to_string())
-            .alignment(Alignment::Center)
-            .style(style);
-        frame.render_widget(label, inner);
+        draw_card_label(frame, x, y, value, bright);
     }
 }
 
@@ -407,8 +409,14 @@ fn jiggle_anchor(layout: BoardLayout, cell: usize, dx: i32) -> (i32, i32) {
     (layout.left as i32 + x, layout.top as i32 + y)
 }
 
-/// Draw one opaque 9x5 tile card with its value on card row 2.
+/// Draw one opaque 9x5 tile card body with its value on card row 2.
 fn draw_tile_card(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
+    draw_card_body(frame, x, y, value, bright);
+    draw_card_label(frame, x, y, value, bright);
+}
+
+/// Fill one 9x5 card with the opaque renderer background and draw its border.
+fn draw_card_body(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
     let origin = Rect::new(x as u16, y as u16, CARD_WIDTH, CARD_HEIGHT);
 
     {
@@ -433,10 +441,13 @@ fn draw_tile_card(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
         .border_type(BorderType::Rounded)
         .border_style(border);
     frame.render_widget(card, origin);
+}
 
+/// Draw one card's value on card row 2, centred in its 7-cell interior.
+fn draw_card_label(frame: &mut Frame, x: i32, y: i32, value: u32, bright: bool) {
     let inner = Rect::new(
-        origin.x + 1,
-        origin.y + CARD_HEIGHT / 2,
+        x as u16 + 1,
+        y as u16 + CARD_HEIGHT / 2,
         LABEL_WIDTH,
         1,
     );

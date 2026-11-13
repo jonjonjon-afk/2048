@@ -1055,6 +1055,24 @@ fn a_merged_card_jiggles_by_the_documented_offsets() {
 }
 
 #[test]
+fn the_ripple_crosses_a_jiggling_card() {
+    // Frame 12: merged cell 14 wobbles two columns left, so its body covers
+    // play cells x 18..=26, y 18..=22 while the ripple front is inside it.
+    // The body is drawn in the card layer, so ripple glyphs survive on top of
+    // it exactly as they do over a settled card (F2, SPEC 5.4 Layering).
+    let buffer = frame_buffer(&demo_slide_app(12), WIDTH, HEIGHT);
+    let crossed = (18..=26)
+        .flat_map(|x| (18..=22).map(move |y| (x, y)))
+        .filter(|(x, y)| is_ripple_glyph(play_cell(&buffer, *x, *y)))
+        .count();
+
+    assert!(
+        crossed > 0,
+        "the ripple must be drawn over the jiggling card body"
+    );
+}
+
+#[test]
 fn the_jiggle_ends_after_240_ms() {
     let at_176 = demo_slide_app(20);
     assert_eq!(at_176.jiggle_dx(14), Some(0), "age 176 has no offset");
