@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M8 (arcade high-score table) — round 2 complete, gate passed, awaiting verdict
-- Last gate result: M8 gate exit 0 (docs/evidence/M8.md "M8 gate"); 145 tests, 0 failed
-- Next action: none; stop at the M8 gate and await the reviewer's verdict
+- Milestone: M9 (handover refresh) — documentation complete, gate passed, awaiting the reviewer's verdict
+- Last gate result: M9 clean-clone gate exit 0 (docs/evidence/M9.md "M9 gate"); 145 tests, 0 failed
+- Next action: none; stop at the M9 gate and await the reviewer's verdict
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -18,15 +18,15 @@
 | M5 | Prettier board and real 60 FPS | gate passed | approved | docs/evidence/M5.md |
 | M6 | Score count-up | gate passed | approved with follow-ups | docs/evidence/M6.md |
 | M7 | Merge ripple | gate passed | approved (round 2, `e1a86c1`) | docs/evidence/M7.md |
-| M8 | Arcade high-score table | gate passed | awaiting verdict (round 2) | docs/evidence/M8.md |
+| M8 | Arcade high-score table | gate passed | approved (round 2, `ca53b8c`) | docs/evidence/M8.md |
+| M9 | Handover refresh | gate passed | awaiting the reviewer's verdict (round 1) | docs/evidence/M9.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- Commit the reviewer's round-2 review (`docs/reviews/M8.md`) unchanged.
-- F1: migrate the legacy file only on `ErrorKind::NotFound`; add `unreadable_table_loads_empty_without_migrating`.
-- F2: ev.sh blocks for R1-R8 named tests, per-target counts, fixture numstat, protected diff, block audit.
-- F3: run the exact gate through ev.sh, then `make e2e` a second time and prove the capture path clean.
-- F4: update EVIDENCE A3/A6/A11 and the M8 rows, PROGRESS, and the api-notes function pointers.
-- F5: commit the F1 change, its test, the evidence and the docs.
+- Commit the reviewer-owned M9 review and accepted M8/M7/SPEC files unchanged.
+- R1: rewrite README for the shipped game (ripple, controls, name entry, table storage).
+- R2: refresh A1/A2/A4 acceptance rows with the M5/M8/M7 proof pointers.
+- R3/R4/R5: sweep every evidence pointer, close OPEN_QUESTIONS, finalise PROGRESS.
+- R6/R7/R8: commit the docs, run the exact clean-clone gate through ev.sh, prove the doc-only diff, fill the M9 evidence.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
