@@ -47,6 +47,10 @@ fn help_exits_zero() {
     let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
     assert!(stdout.contains("Usage: game2048"));
     assert!(stdout.contains("--dump"));
+    assert!(
+        stdout.contains("default 60"),
+        "--help must state the 60 FPS default"
+    );
 }
 
 #[test]

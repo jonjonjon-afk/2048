@@ -4,6 +4,7 @@
 //! filesystem and the terminal. It turns key events into actions, applies the
 //! returned effects to the high-score store, and draws the result.
 
+use std::fmt;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,57 @@ use crate::update::{App, Effect};
 
 /// Longest `dt` the live shell forwards; a resumed terminal must not jump the effects.
 pub const MAX_DT_MILLIS: u64 = 250;
+
+/// Frames the pty self-test draws before it reports the achieved rate.
+pub const SELF_TEST_FRAMES: u32 = 120;
+
+/// The next frame deadline.
+///
+/// `deadline` is the deadline the loop just finished; normally the next one is
+/// one `frame` later, which keeps the fixed grid and absorbs draw time. When
+/// `now` has already passed that grid point a whole frame was missed, so the
+/// grid restarts from `now` — skipped frames, never a catch-up spiral.
+pub fn next_frame_deadline(deadline: Instant, now: Instant, frame: Duration) -> Instant {
+    let next = deadline + frame;
+    if now < next {
+        next
+    } else {
+        now + frame
+    }
+}
+
+/// What one `--self-test-tui` run measured.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SelfTestReport {
+    /// Frames drawn.
+    pub frames: u32,
+    /// Wall-clock time the run took.
+    pub elapsed: Duration,
+}
+
+impl SelfTestReport {
+    /// The achieved frame rate, rounded to a whole frame per second.
+    pub fn fps(&self) -> u32 {
+        let seconds = self.elapsed.as_secs_f64();
+        if seconds > 0.0 {
+            (f64::from(self.frames) / seconds).round() as u32
+        } else {
+            0
+        }
+    }
+}
+
+impl fmt::Display for SelfTestReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "self-test-tui: {} frames in {:.2}s ({} fps)",
+            self.frames,
+            self.elapsed.as_secs_f64(),
+            self.fps()
+        )
+    }
+}
 
 /// Application state plus the store that owns the best score.
 pub struct Shell<S: HighScoreStore> {
@@ -104,12 +156,17 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<Sess
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard::new(ratatui::restore);
     let frame = Duration::from_secs(1) / fps.max(1);
-    let mut last = Instant::now();
+    let mut deadline = Instant::now();
+    let mut last = deadline;
 
     while !shell.app.quit {
         terminal.draw(|area| render(area, &shell.app))?;
 
-        let action = if event::poll(frame)? {
+        // Wait for input only up to the next frame deadline. The draw happens
+        // at the start of the next iteration, so draw time is part of the
+        // frame period instead of being added to it.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let action = if event::poll(remaining)? {
             match event::read()? {
                 Event::Key(key) => action_for_key(key),
                 _ => None,
@@ -118,10 +175,15 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<Sess
             None
         };
 
+        let now = Instant::now();
+        deadline = next_frame_deadline(deadline, now, frame);
+
         // Measured, clamped dt: animation speed follows real time, but a long
         // stall (sleep, suspend) may not skip whole effects.
-        let elapsed = last.elapsed().min(Duration::from_millis(MAX_DT_MILLIS));
-        last = Instant::now();
+        let elapsed = now
+            .duration_since(last)
+            .min(Duration::from_millis(MAX_DT_MILLIS));
+        last = now;
         shell.apply(action, elapsed);
     }
 
@@ -131,21 +193,36 @@ fn run_loop<S: HighScoreStore>(mut shell: Shell<S>, fps: u32) -> io::Result<Sess
     })
 }
 
-/// Enter the real terminal, draw a few frames, restore and exit.
+/// Enter the real terminal, draw 120 paced frames, restore and report.
 ///
 /// This is the automated proof that raw mode and the alternate screen are set
-/// up and restored under a pty. It never reads input and never persists.
-pub fn run_self_test<S: HighScoreStore>(store: S, seed: u64) -> io::Result<()> {
+/// up and restored under a pty, and that the live pacing reaches the requested
+/// frame rate. It never reads input and never persists; `main` prints the
+/// returned report only after the terminal guard has been dropped.
+pub fn run_self_test<S: HighScoreStore>(
+    store: S,
+    seed: u64,
+    fps: u32,
+) -> io::Result<SelfTestReport> {
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard::new(ratatui::restore);
     let shell = Shell::start(store, seed);
+    let frame = Duration::from_secs(1) / fps.max(1);
+    let start = Instant::now();
+    let mut deadline = start;
 
-    for _ in 0..5 {
+    for _ in 0..SELF_TEST_FRAMES {
         terminal.draw(|area| render(area, &shell.app))?;
-        std::thread::sleep(Duration::from_millis(16));
+
+        let next = next_frame_deadline(deadline, Instant::now(), frame);
+        std::thread::sleep(next.saturating_duration_since(Instant::now()));
+        deadline = next;
     }
 
-    Ok(())
+    Ok(SelfTestReport {
+        frames: SELF_TEST_FRAMES,
+        elapsed: start.elapsed(),
+    })
 }
 
 #[cfg(test)]
@@ -294,6 +371,51 @@ mod tests {
         assert!(
             !after_three_seconds.contains("not saved"),
             "warning must be gone after 3000 ms"
+        );
+    }
+
+    #[test]
+    fn frame_pacing_skips_missed_frames() {
+        let deadline = Instant::now();
+        let frame = Duration::from_millis(16);
+
+        assert_eq!(
+            next_frame_deadline(deadline, deadline + Duration::from_millis(5), frame),
+            deadline + Duration::from_millis(16),
+            "an early frame keeps the fixed grid"
+        );
+        assert_eq!(
+            next_frame_deadline(deadline, deadline + Duration::from_millis(16), frame),
+            deadline + Duration::from_millis(32),
+            "a frame that lands exactly on the deadline advances one period"
+        );
+        assert_eq!(
+            next_frame_deadline(deadline, deadline + Duration::from_millis(20), frame),
+            deadline + Duration::from_millis(36),
+            "a missed frame restarts the grid from now, with no catch-up spiral"
+        );
+    }
+
+    #[test]
+    fn self_test_report_line_format() {
+        let report = SelfTestReport {
+            frames: 120,
+            elapsed: Duration::from_millis(2000),
+        };
+
+        assert_eq!(SELF_TEST_FRAMES, 120);
+        assert_eq!(
+            report.to_string(),
+            "self-test-tui: 120 frames in 2.00s (60 fps)"
+        );
+
+        let slower = SelfTestReport {
+            frames: 120,
+            elapsed: Duration::from_millis(2010),
+        };
+        assert_eq!(
+            slower.to_string(),
+            "self-test-tui: 120 frames in 2.01s (60 fps)"
         );
     }
 }

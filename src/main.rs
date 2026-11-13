@@ -45,9 +45,15 @@ fn main() {
     }
 
     if args.self_test_tui {
-        if let Err(error) = shell::run_self_test(MemoryStore::new(0), seed) {
-            eprintln!("error: {error}");
-            std::process::exit(1);
+        match shell::run_self_test(MemoryStore::new(0), seed, args.fps) {
+            // `run_self_test` has returned, so the terminal guard has already
+            // restored raw mode and the alternate screen: the measured line is
+            // the only thing printed, and it goes to stdout.
+            Ok(report) => println!("{report}"),
+            Err(error) => {
+                eprintln!("error: {error}");
+                std::process::exit(1);
+            }
         }
         return;
     }

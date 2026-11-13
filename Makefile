@@ -15,14 +15,14 @@ run:
 demo:
 	$(CARGO) run --release -- --demo --seed 42 --no-persist
 
-# M4 end-to-end: every integration suite (cli, effects, restart) plus three
-# deterministic captures, each diffed against its committed fixture.
+# M5 end-to-end: every integration suite plus three deterministic captures in
+# docs/evidence/e2e/, each diffed against its committed fixture.
 e2e:
 	$(CARGO) test --tests
-	mkdir -p docs/evidence/M4
-	$(CARGO) run --quiet -- --dump --seed 42 > docs/evidence/M4/dump_seed42.txt
-	$(CARGO) run --quiet -- --render-once --seed 42 --no-persist > docs/evidence/M4/frame_100x36_seed42.txt
-	$(CARGO) run --quiet -- --render-once --demo-merge --frame 14 --no-persist > docs/evidence/M4/frame_100x36_demo_merge_14.txt
-	diff -u tests/fixtures/dump_seed42.txt docs/evidence/M4/dump_seed42.txt
-	diff -u tests/fixtures/frame_100x36_seed42.txt docs/evidence/M4/frame_100x36_seed42.txt
-	diff -u tests/fixtures/effect_100x36_frame_14.txt docs/evidence/M4/frame_100x36_demo_merge_14.txt
+	mkdir -p docs/evidence/e2e
+	$(CARGO) run --quiet -- --dump --seed 42 > docs/evidence/e2e/dump_seed42.txt
+	$(CARGO) run --quiet -- --render-once --seed 42 --no-persist > docs/evidence/e2e/frame_100x36_seed42.txt
+	$(CARGO) run --quiet -- --render-once --demo-merge --frame 14 --no-persist > docs/evidence/e2e/frame_100x36_demo_merge_14.txt
+	diff -u tests/fixtures/dump_seed42.txt docs/evidence/e2e/dump_seed42.txt
+	diff -u tests/fixtures/frame_100x36_seed42.txt docs/evidence/e2e/frame_100x36_seed42.txt
+	diff -u tests/fixtures/effect_100x36_frame_14.txt docs/evidence/e2e/frame_100x36_demo_merge_14.txt

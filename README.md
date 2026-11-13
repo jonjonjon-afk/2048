@@ -45,7 +45,7 @@ replaced atomically. Use `--no-persist` to play without reading or writing it;
 make check   # cargo fmt --check, clippy with warnings as errors, all tests
 make run     # play the real game
 make demo    # seeded showcase board and effects
-make e2e     # all integration suites + deterministic captures checked against fixtures
+make e2e     # all integration suites + deterministic captures in docs/evidence/e2e/, checked against fixtures
 ```
 
 Requirements: Rust 1.88+, GNU make, and a terminal with 24-bit colour and at

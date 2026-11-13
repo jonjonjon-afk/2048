@@ -9,7 +9,7 @@ use crate::game::{Direction, Game};
 use crate::highscore::{HighScoreStore, MemoryStore};
 
 /// Live frame rate used when `--fps` is absent.
-pub const DEFAULT_FPS: u32 = 30;
+pub const DEFAULT_FPS: u32 = 60;
 /// Seed used by the demo boards when `--seed` is absent.
 pub const DEMO_SEED: u64 = 42;
 
@@ -28,8 +28,8 @@ Options:
   --demo           seeded showcase board with an in-memory score
   --demo-merge     demo board with a merge ready for captures
   --no-persist     force the in-memory high-score store
-  --self-test-tui  enter the TUI, draw a few frames, restore and exit
-  --fps <n>        live frame rate (default 30)
+  --self-test-tui  enter the TUI, draw 120 paced frames, restore and exit
+  --fps <n>        live frame rate (default 60)
   --help, -h       show this help
 ";
 
@@ -291,6 +291,18 @@ mod tests {
         assert!(parsed.no_persist);
         assert!(parsed.demo);
         assert!(parsed.demo_merge);
+    }
+
+    #[test]
+    fn default_fps_is_60() {
+        assert_eq!(DEFAULT_FPS, 60);
+        assert!(
+            USAGE.contains("default 60"),
+            "usage must state the new default: {USAGE}"
+        );
+        assert_eq!(args(&[]).unwrap().fps, 60, "no --fps means 60");
+        assert_eq!(args(&["--fps", "30"]).unwrap().fps, 30, "--fps 30 parses");
+        assert!(args(&["--fps", "0"]).is_err(), "--fps 0 is still rejected");
     }
 
     #[test]
