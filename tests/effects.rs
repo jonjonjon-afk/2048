@@ -1,4 +1,4 @@
-//! M3 effect tests: injected clock, plasma, shockwave, sparks, flashes and pulse.
+//! M7 effect tests: injected clock, plasma, merge ripple, sparks, flashes and pulse.
 //!
 //! Every animation frame is rendered from fixed state and fixed `dt`; nothing
 //! here reads the wall clock or the real high-score file.
@@ -7,8 +7,12 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use game2048::demo::demo_merge_app;
-use game2048::effects::{RING_SYMBOLS, SPARK_SYMBOLS};
-use game2048::game::{Board, Direction, Game};
+use game2048::effects::{
+    Effects, BEST_PULSE_MILLIS, CELL_CENTRE_X, CELL_CENTRE_Y, CELL_PITCH_X, CELL_PITCH_Y,
+    FLASH_MILLIS, POP_MILLIS, RIPPLE_FRONT_WINDOW, RIPPLE_SYMBOLS, RIPPLE_WALL_FACTOR,
+    SPARKS_PER_MERGE, SPARK_MILLIS, SPARK_SYMBOLS,
+};
+use game2048::game::{Board, Direction, Game, Merge};
 use game2048::render::{
     board_layout, frame_buffer, frame_text, header_style, panel_layout, tile_colour, tile_style,
     BOARD_HEIGHT, BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
@@ -18,6 +22,11 @@ use game2048::Action;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
+
+const WIDTH: u16 = 100;
+const HEIGHT: u16 = 36;
+const PLAY_WIDTH: i32 = 39;
+const PLAY_HEIGHT: i32 = 23;
 
 fn cell_style(buffer: &Buffer, x: u16, y: u16) -> Style {
     let cell = &buffer[(x, y)];
@@ -60,37 +69,35 @@ fn find_token(buffer: &Buffer, y: u16, token: &str) -> Option<(u16, u16)> {
         .map(|start| (start as u16, y))
 }
 
-fn ring_positions(buffer: &Buffer) -> Vec<(u16, u16, char)> {
-    let mut positions = Vec::new();
-    for y in 0..buffer.area.height {
-        for x in 0..buffer.area.width {
-            if let Some(character) = buffer[(x, y)].symbol().chars().next() {
-                if RING_SYMBOLS.contains(&character) {
-                    positions.push((x, y, character));
-                }
+/// The demo merge advanced by an arbitrary exact age (frames are 16 ms steps).
+fn app_at(millis: u64) -> App {
+    let mut app = demo_merge_app(0);
+    app.update(None, Duration::from_millis(millis));
+    app
+}
+
+/// Read one play-area cell exactly where the renderer draws it.
+///
+/// Play-area cell `(x, y)` sits at `panel.left + 1 + x`, `panel.top + 1 + y`.
+fn play_cell(buffer: &Buffer, x: i32, y: i32) -> char {
+    let panel = panel_layout(WIDTH, HEIGHT);
+    let column = panel.left + 1 + x as u16;
+    let row = panel.top + 1 + y as u16;
+    buffer[(column, row)].symbol().chars().next().unwrap_or(' ')
+}
+
+/// Every ripple glyph inside the 39x23 play area, with its play-area cell.
+fn ripple_cells(buffer: &Buffer) -> Vec<(i32, i32, char)> {
+    let mut cells = Vec::new();
+    for y in 0..PLAY_HEIGHT {
+        for x in 0..PLAY_WIDTH {
+            let glyph = play_cell(buffer, x, y);
+            if RIPPLE_SYMBOLS.contains(&glyph) {
+                cells.push((x, y, glyph));
             }
         }
     }
-    positions
-}
-
-fn chebyshev_from_cell(x: u16, y: u16, cell: usize, width: u16, height: u16) -> i32 {
-    let layout = board_layout(width, height);
-    let column = (cell % 4) as u16;
-    let row = (cell / 4) as u16;
-    let centre_x = layout.left + column * (CARD_WIDTH + CARD_GAP) + CARD_WIDTH / 2;
-    let centre_y = layout.top + row * (CARD_HEIGHT + CARD_GAP) + CARD_HEIGHT / 2;
-    (i32::from(x) - i32::from(centre_x))
-        .abs()
-        .max((i32::from(y) - i32::from(centre_y)).abs())
-}
-
-fn max_ring_distance(buffer: &Buffer, cell: usize) -> i32 {
-    ring_positions(buffer)
-        .iter()
-        .map(|(x, y, _)| chebyshev_from_cell(*x, *y, cell, 100, 36))
-        .max()
-        .unwrap_or(0)
+    cells
 }
 
 fn assert_buffers_identical(first: &Buffer, second: &Buffer) {
@@ -248,83 +255,243 @@ fn plasma_is_deterministic() {
 }
 
 #[test]
-fn shockwave_uses_ring_characters() {
-    let mut seen = HashSet::new();
-    for frame in [4, 14, 24] {
-        let buffer = frame_buffer(&demo_merge_app(frame), 100, 36);
-        for (_, _, character) in ring_positions(&buffer) {
-            seen.insert(character);
-        }
-    }
-
-    for character in RING_SYMBOLS {
+fn ripple_radius_matches_the_spec_at_every_pin() {
+    // SPEC 5.4: radius = age_ms as f64 * 0.04, no rounding.
+    for (millis, expected) in [
+        (100u64, 4.0f64),
+        (150, 6.0),
+        (224, 8.96),
+        (480, 19.2),
+        (700, 28.0),
+        (880, 35.2),
+    ] {
+        let app = app_at(millis);
+        let ripples = app.effects.ripples();
+        assert_eq!(ripples.len(), 1, "{millis} ms has one active ripple");
+        assert_eq!(ripples[0].radius(), expected, "{millis} ms radius");
         assert!(
-            seen.contains(&character),
-            "ring character {character:?} is missing"
+            (ripples[0].amplitude() - (1.0 - millis as f64 / 900.0)).abs() < f64::EPSILON,
+            "{millis} ms base amplitude"
         );
     }
+
+    // The ripple geometry stays tied to the 9x5 cards with 1-cell gaps.
+    assert_eq!(CELL_PITCH_X, f64::from(CARD_WIDTH + CARD_GAP));
+    assert_eq!(CELL_PITCH_Y, f64::from(CARD_HEIGHT + CARD_GAP));
+    assert_eq!(CELL_CENTRE_X, f64::from(CARD_WIDTH) / 2.0);
+    assert_eq!(CELL_CENTRE_Y, f64::from(CARD_HEIGHT) / 2.0);
+    assert_eq!(RIPPLE_FRONT_WINDOW, 0.75);
+    assert_eq!(RIPPLE_WALL_FACTOR, 0.55);
 }
 
 #[test]
-fn shockwave_expands_and_expires_after_450ms() {
-    let frame_4 = frame_buffer(&demo_merge_app(4), 100, 36);
-    let frame_14 = frame_buffer(&demo_merge_app(14), 100, 36);
-    let frame_24 = frame_buffer(&demo_merge_app(24), 100, 36);
+fn ripple_front_at_100ms_matches_the_hand_table() {
+    let buffer = frame_buffer(&app_at(100), WIDTH, HEIGHT);
 
-    let radius_4 = max_ring_distance(&frame_4, 0);
-    let radius_14 = max_ring_distance(&frame_14, 0);
-    let radius_24 = max_ring_distance(&frame_24, 0);
+    assert_eq!(play_cell(&buffer, 0, 2), '▓', "(0,2) is the direct front");
+    assert_eq!(play_cell(&buffer, 9, 2), '▓', "(9,2) is the direct front");
     assert!(
-        radius_4 < radius_14 && radius_14 < radius_24,
-        "radii {radius_4}, {radius_14}, {radius_24}"
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 5, 5)),
+        "(5,5) is inside the ring, not on it"
+    );
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&buffer, 20, 12)),
+        "(20,12) is outside the ring"
     );
 
-    let mut app = demo_merge_app(0);
-    app.update(None, Duration::from_millis(449));
-    assert_eq!(app.effects.shockwaves().len(), 1, "active at 449 ms");
-    assert!(
-        !ring_positions(&frame_buffer(&app, 100, 36)).is_empty(),
-        "ring is rendered at 449 ms"
+    // The front is a ring: the centre cell is not painted by the wave alone.
+    let app = app_at(100);
+    let ripple = app.effects.ripples()[0];
+    assert!(ripple.glyph_at(0, 2).is_some());
+    assert!(ripple.glyph_at(5, 5).is_none());
+}
+
+#[test]
+fn ripple_reflects_off_the_left_wall() {
+    let at_150 = frame_buffer(&app_at(150), WIDTH, HEIGHT);
+    assert_eq!(play_cell(&at_150, 10, 2), '▓', "(10,2) direct at 150 ms");
+    assert_eq!(
+        play_cell(&at_150, 0, 2),
+        '▒',
+        "(0,2) is the left-wall image at 150 ms"
     );
 
+    let at_224 = frame_buffer(&app_at(224), WIDTH, HEIGHT);
+    assert_eq!(play_cell(&at_224, 13, 10), '▓', "(13,10) direct at 224 ms");
+    assert_eq!(
+        play_cell(&at_224, 3, 10),
+        '▒',
+        "(3,10) is the left-wall image at 224 ms"
+    );
+    assert!(
+        !RIPPLE_SYMBOLS.contains(&play_cell(&at_224, 9, 10)),
+        "(9,10) sits in the gap between the direct and reflected crests"
+    );
+}
+
+#[test]
+fn ripple_fades_to_sta_and_expires_at_900ms() {
+    let at_480 = frame_buffer(&app_at(480), WIDTH, HEIGHT);
+    assert_eq!(play_cell(&at_480, 23, 2), '▒', "(23,2) at 480 ms");
+    assert_eq!(
+        play_cell(&at_480, 13, 2),
+        '░',
+        "(13,2) is the weak left-wall image at 480 ms"
+    );
+
+    let at_700 = frame_buffer(&app_at(700), WIDTH, HEIGHT);
+    assert_eq!(play_cell(&at_700, 32, 2), '░', "(32,2) at 700 ms");
+    let strong: Vec<(i32, i32, char)> = ripple_cells(&at_700)
+        .into_iter()
+        .filter(|(_, _, glyph)| *glyph == '▓' || *glyph == '▒')
+        .collect();
+    assert!(
+        strong.is_empty(),
+        "700 ms must show no ▓ or ▒ anywhere, found {strong:?}"
+    );
+
+    let at_880 = frame_buffer(&app_at(880), WIDTH, HEIGHT);
+    assert!(
+        ripple_cells(&at_880).is_empty(),
+        "880 ms must show no ripple glyph, found {:?}",
+        ripple_cells(&at_880)
+    );
+
+    let mut app = app_at(899);
+    assert_eq!(app.effects.ripples().len(), 1, "ripple is alive at 899 ms");
     app.update(None, Duration::from_millis(1));
-    assert!(app.effects.shockwaves().is_empty(), "gone at 450 ms");
     assert!(
-        ring_positions(&frame_buffer(&app, 100, 36)).is_empty(),
-        "no ring is rendered at 450 ms"
+        app.effects.ripples().is_empty(),
+        "the active-wave accessor is empty at 900 ms"
     );
+    assert!(ripple_cells(&frame_buffer(&app, WIDTH, HEIGHT)).is_empty());
 }
 
 #[test]
-fn shockwave_snapshots_at_frames_4_14_24() {
-    assert_eq!(
-        frame_text(&demo_merge_app(4), 100, 36),
-        include_str!("fixtures/effect_100x36_frame_04.txt")
-    );
-    assert_eq!(
-        frame_text(&demo_merge_app(14), 100, 36),
-        include_str!("fixtures/effect_100x36_frame_14.txt")
-    );
-    assert_eq!(
-        frame_text(&demo_merge_app(24), 100, 36),
-        include_str!("fixtures/effect_100x36_frame_24.txt")
-    );
+fn a_merge_starts_one_ripple_one_flash_and_fourteen_sparks() {
+    let app = demo_merge_app(0);
+    let ripples = app.effects.ripples();
+
+    assert_eq!(ripples.len(), 1, "one merge starts exactly one ripple");
+    assert_eq!(ripples[0].cell, 0);
+    assert_eq!(ripples[0].value, 4);
+    assert_eq!(app.effects.sparks().len(), SPARKS_PER_MERGE);
+    assert!(app.effects.is_flashing(0), "the merged cell flashes");
+    assert!(!app.effects.is_popping(0));
+
+    assert_eq!(SPARKS_PER_MERGE, 14);
+    assert_eq!(SPARK_MILLIS, 500);
+    assert_eq!(FLASH_MILLIS, 180);
+    assert_eq!(POP_MILLIS, 120);
+    assert_eq!(BEST_PULSE_MILLIS, 600);
 }
 
 #[test]
-fn shockwave_colour_comes_from_the_merged_value() {
-    for frame in [4, 14, 24] {
-        let buffer = frame_buffer(&demo_merge_app(frame), 100, 36);
-        let positions = ring_positions(&buffer);
-        assert!(!positions.is_empty(), "frame {frame} has no ring");
+fn two_merges_keep_two_waves() {
+    let mut effects = Effects::new();
+    effects.trigger_merge(Merge { cell: 0, value: 4 });
+    effects.trigger_merge(Merge { cell: 5, value: 8 });
 
-        assert!(
-            positions
-                .iter()
-                .any(|(x, y, _)| buffer[(*x, *y)].fg == tile_colour(4)),
-            "frame {frame} has no ring cell in the value-4 tile colour"
-        );
-    }
+    let cells: Vec<usize> = effects.ripples().iter().map(|ripple| ripple.cell).collect();
+    let values: Vec<u32> = effects
+        .ripples()
+        .iter()
+        .map(|ripple| ripple.value)
+        .collect();
+    assert_eq!(cells, vec![0, 5], "each merge keeps its own source cell");
+    assert_eq!(values, vec![4, 8], "each merge keeps its own value");
+    assert_eq!(effects.sparks().len(), SPARKS_PER_MERGE * 2);
+
+    effects.advance(Duration::from_millis(899));
+    assert_eq!(
+        effects.ripples().len(),
+        2,
+        "both waves live while age < 900"
+    );
+    effects.advance(Duration::from_millis(1));
+    assert!(effects.ripples().is_empty(), "both waves expire at 900 ms");
+}
+
+#[test]
+fn one_move_with_two_merges_keeps_two_waves() {
+    let board = Board::from_rows([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [2, 2, 0, 0]]);
+    let mut app = App::new(Game::from_state(board, 0, 0, 42));
+    app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+
+    let cells: Vec<usize> = app
+        .effects
+        .ripples()
+        .iter()
+        .map(|ripple| ripple.cell)
+        .collect();
+    let values: Vec<u32> = app
+        .effects
+        .ripples()
+        .iter()
+        .map(|ripple| ripple.value)
+        .collect();
+    assert_eq!(cells, vec![0, 12], "one ripple per merge, in move order");
+    assert_eq!(values, vec![4, 4]);
+}
+
+#[test]
+fn tile_digits_stay_on_top_of_the_ripple() {
+    // Frame 1: radius 0.64 covers the merged card's centre cell (4,2), which is
+    // also where cell 0's `4` digit is drawn. The label layer must win.
+    let frame_1 = demo_merge_app(1);
+    let ripple = frame_1.effects.ripples()[0];
+    assert_eq!(
+        ripple.glyph_at(4, 2),
+        Some('▓'),
+        "the direct front must cover the merged card's centre at 16 ms"
+    );
+    assert_eq!(
+        play_cell(&frame_buffer(&frame_1, WIDTH, HEIGHT), 4, 2),
+        '4',
+        "frame 1 must keep the digit at (4,2), not the ripple glyph"
+    );
+
+    // Frame 2 still reads the digit.
+    assert_eq!(
+        play_cell(&frame_buffer(&demo_merge_app(2), WIDTH, HEIGHT), 4, 2),
+        '4',
+        "frame 2 must keep the digit at (4,2)"
+    );
+
+    // Frame 14: the ripple is still drawn over the cards where no label sits.
+    let buffer = frame_buffer(&demo_merge_app(14), WIDTH, HEIGHT);
+    assert_eq!(
+        play_cell(&buffer, 13, 10),
+        '▓',
+        "frame 14 ripple at (13,10)"
+    );
+    let ripple = demo_merge_app(14).effects.ripples()[0];
+    assert_eq!(
+        ripple.glyph_at(4, 2),
+        Some('▒'),
+        "at 224 ms the left-wall image covers (4,2), so the label still wins"
+    );
+    assert_eq!(play_cell(&buffer, 4, 2), '4', "frame 14 keeps the digit");
+}
+
+#[test]
+fn ripple_colour_comes_from_the_merged_value() {
+    // Pinned cells away from any tile label row, so the label layer cannot
+    // recolour them: (13,10) is the direct crest at 224 ms, (23,2) at 480 ms.
+    let at_224 = frame_buffer(&app_at(224), WIDTH, HEIGHT);
+    let panel = panel_layout(WIDTH, HEIGHT);
+    assert_eq!(
+        at_224[(panel.left + 1 + 13, panel.top + 1 + 10)].fg,
+        tile_colour(4),
+        "the 224 ms ripple must use the value-4 colour"
+    );
+
+    let at_480 = frame_buffer(&app_at(480), WIDTH, HEIGHT);
+    assert_eq!(
+        at_480[(panel.left + 1 + 23, panel.top + 1 + 2)].fg,
+        tile_colour(4),
+        "the 480 ms ripple must use the value-4 colour"
+    );
 }
 
 #[test]

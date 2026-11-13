@@ -193,7 +193,7 @@ fn demo_and_demo_merge_render_the_same_frame() {
 }
 
 #[test]
-fn render_once_demo_merge_frame14_contains_ring_and_spark() {
+fn render_once_demo_merge_frame14_contains_ripple_and_spark() {
     let output = run(&[
         "--render-once",
         "--demo-merge",
@@ -204,7 +204,8 @@ fn render_once_demo_merge_frame14_contains_ring_and_spark() {
 
     assert!(output.status.success(), "--demo-merge must exit 0");
     let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-    assert!(stdout.contains('░'), "frame 14 is missing the ░ shockwave");
+    assert!(stdout.contains('▓'), "frame 14 is missing the ▓ ripple");
+    assert!(stdout.contains('▒'), "frame 14 is missing the ▒ ripple");
     assert!(stdout.contains('✦'), "frame 14 is missing the ✦ spark");
 }
 

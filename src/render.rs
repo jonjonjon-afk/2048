@@ -12,7 +12,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{Frame, Terminal};
 
-use crate::effects::{Shockwave, Spark, RING_SYMBOLS};
+use crate::effects::{Ripple, Spark};
 use crate::update::App;
 
 /// Width of one board card in columns.
@@ -253,31 +253,24 @@ fn render_effects(frame: &mut Frame, area: Rect, app: &App) {
     let board = Rect::new(layout.left, layout.top, BOARD_WIDTH, BOARD_HEIGHT);
     let buffer = frame.buffer_mut();
 
-    for wave in app.effects.shockwaves() {
-        draw_shockwave(buffer, board, wave);
+    for ripple in app.effects.ripples() {
+        draw_ripple(buffer, board, ripple);
     }
     for spark in app.effects.sparks() {
         draw_spark(buffer, board, spark);
     }
 }
 
-fn draw_shockwave(buffer: &mut Buffer, board: Rect, wave: &Shockwave) {
-    let radius = wave.radius();
-    let column = (wave.cell % 4) as i32;
-    let row = (wave.cell / 4) as i32;
-    let centre_x = column * (CARD_WIDTH as i32 + CARD_GAP as i32) + CARD_WIDTH as i32 / 2;
-    let centre_y = row * (CARD_HEIGHT as i32 + CARD_GAP as i32) + CARD_HEIGHT as i32 / 2;
-    let colour = tile_colour(wave.value);
+fn draw_ripple(buffer: &mut Buffer, board: Rect, ripple: &Ripple) {
+    let colour = tile_colour(ripple.value);
 
     for y in 0..BOARD_HEIGHT as i32 {
         for x in 0..BOARD_WIDTH as i32 {
-            let distance = (x - centre_x).abs().max((y - centre_y).abs());
-            if distance == 0 || distance > radius || distance + 2 < radius {
+            let Some(glyph) = ripple.glyph_at(x, y) else {
                 continue;
-            }
-            let index = (distance + 2 - radius).clamp(0, 2) as usize;
+            };
             if let Some(cell) = buffer.cell_mut((board.x + x as u16, board.y + y as u16)) {
-                cell.set_char(RING_SYMBOLS[index])
+                cell.set_char(glyph)
                     .set_style(Style::new().fg(colour).bg(BACKGROUND));
             }
         }

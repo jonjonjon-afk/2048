@@ -49,9 +49,9 @@ mod tests {
         assert_eq!(app.game.best, 4);
         assert_eq!(app.game.last_spawn, Some(Spawn { cell: 9, value: 2 }));
 
-        assert_eq!(app.effects.shockwaves().len(), 1);
-        assert_eq!(app.effects.shockwaves()[0].cell, 0);
-        assert_eq!(app.effects.shockwaves()[0].value, 4);
+        assert_eq!(app.effects.ripples().len(), 1);
+        assert_eq!(app.effects.ripples()[0].cell, 0);
+        assert_eq!(app.effects.ripples()[0].value, 4);
         assert_eq!(app.effects.sparks().len(), crate::effects::SPARKS_PER_MERGE);
         assert!(app.effects.is_flashing(0));
         assert!(app.effects.is_popping(9));
