@@ -54,10 +54,10 @@ replaces the game-over view. Its keys are separate from the game controls:
 While name entry is open, `R`, `Q`, `H` and the arrow keys do not restart, quit
 or toggle anything: letters are typed into the name and arrows are ignored.
 
-A move key pressed while a tile is still gliding is ignored: each move's tiles
-slide for 140 ms on an ease-out curve, the merge and spawn effects start when
-they land, and a merged card then wobbles for 240 ms along the merge axis
-(columns after a left/right move, rows after an up/down move). `R` clears it.
+Move keys wait for the slide: each move's tiles glide for 140 ms on an ease-out
+curve, the merge and spawn effects start when they land, and a merged card then
+wobbles for 240 ms along the merge axis (columns after a left/right move, rows
+after an up/down move). `R` clears it.
 
 The minimum supported terminal is **60x30** (columns x rows); **100x36** is the
 recommended size and the layout used by the committed snapshots. Below the
