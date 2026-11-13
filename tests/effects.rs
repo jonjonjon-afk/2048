@@ -386,15 +386,23 @@ fn ripple_reflects_off_the_left_wall() {
         "(0,2) is the left-wall image at 150 ms"
     );
 
-    let at_224 = frame_buffer(&app_at(224), WIDTH, HEIGHT);
+    let at_224 = app_at(224);
+    let ripple = at_224.effects.ripples()[0];
+    let (glyph, amplitude) = ripple
+        .front_at(3, 2)
+        .expect("(3,2) is on the left-wall image at 224 ms");
+    assert_eq!(glyph, '▒', "(3,2) effect-layer reflected crest");
+    assert!(
+        (amplitude - 0.4131111111111111).abs() < 1e-12,
+        "(3,2) amplitude is 0.413111, got {amplitude}"
+    );
+
+    let at_224 = frame_buffer(&at_224, WIDTH, HEIGHT);
     assert_eq!(play_cell(&at_224, 13, 2), '▓', "(13,2) direct at 224 ms");
-    // R3 pins the reflected crest at (3,2); at 224 ms a spark's glyph is drawn
-    // over that cell, so this buffer pin cannot pass without changing sparks or
-    // the renderer. See docs/OPEN_QUESTIONS.md Q14.
     assert_eq!(
-        play_cell(&at_224, 3, 2),
+        play_cell(&at_224, 2, 5),
         '▒',
-        "(3,2) is the left-wall image at 224 ms"
+        "(2,5) is the rendered left-wall image at 224 ms"
     );
     assert!(
         !RIPPLE_SYMBOLS.contains(&play_cell(&at_224, 9, 2)),
@@ -555,10 +563,8 @@ fn ripple_colour_fades_with_age() {
     // bg = Rgb(6, 8, 20) and the value-4 colour Rgb(0, 200, 255).
     let direct_224 = colour_at(224, 13, 2);
     assert_eq!(direct_224, Color::Rgb(1, 152, 197), "224 ms direct crest");
-    // (3,2) is the label row of the value-4 card, so the label layer replaces
-    // the ripple foreground (Q13); the R4 literal cannot be read there. Q14.
     assert_eq!(
-        colour_at(224, 3, 2),
+        colour_at(224, 2, 5),
         Color::Rgb(4, 87, 117),
         "224 ms left-wall crest"
     );
@@ -573,7 +579,7 @@ fn ripple_colour_fades_with_age() {
         "700 ms direct crest"
     );
 
-    let reflected_224 = color_luma(colour_at(224, 3, 2));
+    let reflected_224 = color_luma(colour_at(224, 2, 5));
     assert!(
         color_luma(direct_224) > reflected_224,
         "the 224 ms direct crest must be brighter than the reflected crest"
