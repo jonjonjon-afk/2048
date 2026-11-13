@@ -17,11 +17,13 @@
 | M4 | Polish and handover | gate passed | pending | docs/evidence/M4.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- U1: point the R6 and A6 proof labels in `docs/EVIDENCE.md` at `M4 gate final round 2`.
-- U1: record the grep proof through ev.sh; no other EVIDENCE row changes.
-- U2: commit `docs/reviews/M4.md` byte-unchanged (no content edit).
-- U2: record the committed-vs-working hash and the clean tree through ev.sh.
-- Commit the U1 evidence append after the U2 check; no code, test, Makefile or README change.
+- M5 R1: cards 9x5, board 39x23, value on the middle inner row centred with floor division; retarget layout tests.
+- M5 R2: 41x25 rounded play-area frame at floor-centred panel_layout, SCORE/BEST on its top edge, header title only; retarget best_pulse test.
+- M5 R3: regenerate the two frame fixtures and the three effect fixtures, show both sizes in evidence.
+- M5 R4: DEFAULT_FPS 60, usage text, public `next_frame_deadline` + `frame_pacing_skips_missed_frames`, live loop poll(remaining).
+- M5 R5: `SelfTestReport` Display line, 120 paced frames, main prints one stdout line after the guard drops.
+- M5 R6: `make e2e` captures under `docs/evidence/e2e/`, committed, README + Makefile comment updated.
+- M5 R7/R8: touch only allowed files, record diffs, fill evidence + EVIDENCE rows, run the M5 gate through ev.sh.
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.

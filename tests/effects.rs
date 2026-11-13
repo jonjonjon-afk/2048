@@ -10,8 +10,8 @@ use game2048::demo::demo_merge_app;
 use game2048::effects::{RING_SYMBOLS, SPARK_SYMBOLS};
 use game2048::game::{Board, Direction, Game};
 use game2048::render::{
-    board_layout, frame_buffer, frame_text, header_style, tile_colour, tile_style, BOARD_HEIGHT,
-    BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
+    board_layout, frame_buffer, frame_text, header_style, panel_layout, tile_colour, tile_style,
+    BOARD_HEIGHT, BOARD_WIDTH, CARD_GAP, CARD_HEIGHT, CARD_WIDTH,
 };
 use game2048::update::App;
 use game2048::Action;
@@ -469,11 +469,13 @@ fn flash_and_pop_do_not_change_the_board() {
 
 #[test]
 fn best_pulse_lasts_600ms() {
+    let row = panel_layout(100, 36).top;
     for millis in [0u64, 300, 599] {
         let mut app = demo_merge_app(0);
         app.update(None, Duration::from_millis(millis));
         let buffer = frame_buffer(&app, 100, 36);
-        let position = find_token(&buffer, 0, "BEST").expect("header shows BEST");
+        let position =
+            find_token(&buffer, row, "BEST").expect("the play-area top edge shows BEST");
 
         assert_ne!(
             cell_style(&buffer, position.0, position.1),
@@ -485,7 +487,7 @@ fn best_pulse_lasts_600ms() {
     let mut app = demo_merge_app(0);
     app.update(None, Duration::from_millis(600));
     let buffer = frame_buffer(&app, 100, 36);
-    let position = find_token(&buffer, 0, "BEST").expect("header shows BEST");
+    let position = find_token(&buffer, row, "BEST").expect("the play-area top edge shows BEST");
     assert_eq!(
         cell_style(&buffer, position.0, position.1),
         header_style(),

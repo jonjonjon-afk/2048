@@ -16,15 +16,21 @@ use crate::effects::{Shockwave, Spark, RING_SYMBOLS};
 use crate::update::App;
 
 /// Width of one board card in columns.
-pub const CARD_WIDTH: u16 = 8;
+pub const CARD_WIDTH: u16 = 9;
 /// Height of one board card in rows.
-pub const CARD_HEIGHT: u16 = 4;
+pub const CARD_HEIGHT: u16 = 5;
 /// Gap between two neighbouring cards in both axes.
 pub const CARD_GAP: u16 = 1;
 /// Total board width: four cards and three gaps.
 pub const BOARD_WIDTH: u16 = CARD_WIDTH * 4 + CARD_GAP * 3;
 /// Total board height: four cards and three gaps.
 pub const BOARD_HEIGHT: u16 = CARD_HEIGHT * 4 + CARD_GAP * 3;
+/// Width of the play-area frame: the board plus one border cell on each side.
+pub const PANEL_WIDTH: u16 = BOARD_WIDTH + 2;
+/// Height of the play-area frame: the board plus one border cell on each side.
+pub const PANEL_HEIGHT: u16 = BOARD_HEIGHT + 2;
+/// Width of the space inside a card border where the value sits.
+pub const LABEL_WIDTH: u16 = CARD_WIDTH - 2;
 /// Smallest supported terminal width.
 pub const MIN_WIDTH: u16 = 60;
 /// Smallest supported terminal height.
@@ -52,18 +58,27 @@ pub fn best_pulse_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Where the board block starts inside a frame of the given size.
+/// Top-left corner of the play-area frame, or of the board inside it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoardLayout {
     pub left: u16,
     pub top: u16,
 }
 
-/// Centre the 35x19 board block horizontally and vertically (floor division).
-pub fn board_layout(width: u16, height: u16) -> BoardLayout {
+/// Centre the 41x25 play-area frame in the frame (floor division).
+pub fn panel_layout(width: u16, height: u16) -> BoardLayout {
     BoardLayout {
-        left: width.saturating_sub(BOARD_WIDTH) / 2,
-        top: height.saturating_sub(BOARD_HEIGHT) / 2,
+        left: width.saturating_sub(PANEL_WIDTH) / 2,
+        top: height.saturating_sub(PANEL_HEIGHT) / 2,
+    }
+}
+
+/// Top-left corner of the 39x23 board: the play-area frame's inner corner.
+pub fn board_layout(width: u16, height: u16) -> BoardLayout {
+    let panel = panel_layout(width, height);
+    BoardLayout {
+        left: panel.left + 1,
+        top: panel.top + 1,
     }
 }
 
@@ -80,7 +95,8 @@ pub fn render(frame: &mut Frame, app: &App) {
     let outer = Block::new().borders(Borders::ALL);
     frame.render_widget(outer, area);
 
-    render_header(frame, area, app);
+    render_header(frame, area);
+    render_panel(frame, area, app);
     render_board_cards(frame, area, app);
     render_effects(frame, area, app);
     render_board_labels(frame, area, app);
@@ -132,23 +148,52 @@ fn render_too_small(frame: &mut Frame, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_header(frame: &mut Frame, area: Rect, app: &App) {
+fn render_header(frame: &mut Frame, area: Rect) {
     let left = "┌ 2048 ";
-    let score = format!(" SCORE {}   ", app.game.score);
-    let best = format!("BEST {} ┐", app.game.best);
+    let right = "┐";
     let fill = (area.width as usize)
-        .saturating_sub(left.chars().count() + score.chars().count() + best.chars().count());
-    let line = format!("{left}{}{score}{best}", "─".repeat(fill));
+        .saturating_sub(left.chars().count() + right.chars().count());
+    let line = format!("{left}{}{right}", "─".repeat(fill));
 
     let paragraph = Paragraph::new(line).style(header_style());
     frame.render_widget(paragraph, Rect::new(area.x, area.y, area.width, 1));
+}
+
+/// Draw the 41x25 play-area frame and its `SCORE`/`BEST` top edge.
+///
+/// The frame is a rounded block; the score line is written over its top border
+/// starting two cells after the top-left corner, so both corners stay intact.
+/// The rest of the edge keeps the block's `─` fill.
+fn render_panel(frame: &mut Frame, area: Rect, app: &App) {
+    let layout = panel_layout(area.width, area.height);
+    let panel = Rect::new(layout.left, layout.top, PANEL_WIDTH, PANEL_HEIGHT);
+    let border = Style::new().fg(MUTED).bg(BACKGROUND);
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(border);
+    frame.render_widget(block, panel);
+
+    let score = format!("SCORE {}", app.game.score);
+    let best = format!("BEST {}", app.game.best);
+    let text = format!("{score}   {best}");
+    let edge = Rect::new(layout.left + 2, layout.top, text.chars().count() as u16, 1);
+    frame
+        .buffer_mut()
+        .set_style(edge, header_style());
+    for (offset, character) in text.chars().enumerate() {
+        let x = layout.left + 2 + offset as u16;
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, layout.top)) {
+            cell.set_char(character);
+        }
+    }
 
     if app.effects.is_best_pulsing() {
-        let x = area.x + (left.chars().count() + fill + score.chars().count()) as u16;
-        let width = format!("BEST {}", app.game.best).chars().count() as u16;
+        let x = layout.left + 2 + (score.chars().count() + 3) as u16;
+        let width = best.chars().count() as u16;
         frame
             .buffer_mut()
-            .set_style(Rect::new(x, area.y, width, 1), best_pulse_style());
+            .set_style(Rect::new(x, layout.top, width, 1), best_pulse_style());
     }
 }
 
@@ -194,9 +239,9 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
         let origin = cell_origin(layout, cell);
         let inner = Rect::new(
             origin.x + 1,
-            origin.y + 1,
-            origin.width - 2,
-            origin.height - 2,
+            origin.y + CARD_HEIGHT / 2,
+            LABEL_WIDTH,
+            1,
         );
         let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
         let style = if bright {
@@ -464,46 +509,182 @@ mod tests {
     }
 
     #[test]
-    fn board_cards_are_8x4_with_one_cell_gaps() {
-        for (width, height) in [(100, 36), (60, 30)] {
+    fn card_geometry_is_9x5_with_one_cell_gaps() {
+        assert_eq!(CARD_WIDTH, 9);
+        assert_eq!(CARD_HEIGHT, 5);
+        assert_eq!(CARD_GAP, 1);
+        assert_eq!(BOARD_WIDTH, 39);
+        assert_eq!(BOARD_HEIGHT, 23);
+        assert_eq!(PANEL_WIDTH, 41);
+        assert_eq!(PANEL_HEIGHT, 25);
+
+        for (width, height) in [(100u16, 36u16), (60, 30)] {
             let text = frame_text(&seed_42_app(), width, height);
             let grid = lines(&text);
+            let panel = panel_layout(width, height);
             let layout = board_layout(width, height);
-            let mut corners = Vec::new();
+            let expected = if width == 100 {
+                BoardLayout { left: 30, top: 6 }
+            } else {
+                BoardLayout { left: 10, top: 3 }
+            };
+            assert_eq!(layout, expected, "{width}x{height} board origin");
+            assert_eq!(panel.left, layout.left - 1);
+            assert_eq!(panel.top, layout.top - 1);
 
+            let mut corners = vec![(panel.left as usize, panel.top as usize)];
             for row in 0..4u16 {
                 for column in 0..4u16 {
                     let x = (layout.left + column * (CARD_WIDTH + CARD_GAP)) as usize;
                     let y = (layout.top + row * (CARD_HEIGHT + CARD_GAP)) as usize;
                     assert_eq!(grid[y][x], '╭', "{width}x{height} card {row},{column}");
-                    assert_eq!(grid[y][x + 7], '╮');
-                    assert_eq!(grid[y + 3][x], '╰');
-                    assert_eq!(grid[y + 3][x + 7], '╯');
+                    assert_eq!(grid[y][x + 8], '╮');
+                    assert_eq!(grid[y + 4][x], '╰');
+                    assert_eq!(grid[y + 4][x + 8], '╯');
                     corners.push((x, y));
                 }
             }
 
-            assert_eq!(find_positions(&grid, '╭'), corners);
-            assert_eq!(layout.left, if width == 100 { 32 } else { 12 });
+            // Cell 0's card box is (30,6)-(38,10) at 100x36.
             assert_eq!(
-                layout.left + BOARD_WIDTH,
-                corners.last().unwrap().0 as u16 + 8
+                find_positions(&grid, '╭'),
+                corners,
+                "{width}x{height} rounded corners other than the panel and 16 cards"
+            );
+            if width == 100 {
+                assert_eq!((corners[1].0, corners[1].1), (30, 6));
+                assert_eq!(grid[6][30], '╭');
+                assert_eq!(grid[6][38], '╮');
+                assert_eq!(grid[10][30], '╰');
+                assert_eq!(grid[10][38], '╯');
+            }
+        }
+    }
+
+    #[test]
+    fn tile_label_is_centred_on_the_middle_row() {
+        // (value, expected left padding inside the 7-cell inner width)
+        let cases = [(2u32, 3usize), (16, 2), (128, 2), (2048, 1)];
+
+        for (width, height) in [(100u16, 36u16), (60, 30)] {
+            let layout = board_layout(width, height);
+            let card_left = layout.left as usize;
+            let card_top = layout.top as usize;
+            let inner_left = card_left + 1;
+            let label_row = card_top + 2;
+            assert_eq!(
+                (inner_left, label_row),
+                if width == 100 { (31, 8) } else { (11, 5) },
+                "{width}x{height} cell 0 inner box and label row"
+            );
+
+            for (value, padding) in cases {
+                let mut board = Board::empty();
+                board.set_cell(0, value);
+                let grid = lines(&frame_text(&App::new(Game::from_state(board, 0, 0, 42)), width, height));
+
+                let mut digits = Vec::new();
+                for y in card_top..card_top + CARD_HEIGHT as usize {
+                    for x in card_left..card_left + CARD_WIDTH as usize {
+                        if grid[y][x].is_ascii_digit() {
+                            digits.push((x, y));
+                        }
+                    }
+                }
+
+                let text = value.to_string();
+                let expected: Vec<(usize, usize)> = (0..text.chars().count())
+                    .map(|offset| (inner_left + padding + offset, label_row))
+                    .collect();
+                assert_eq!(
+                    digits, expected,
+                    "{width}x{height} value {value} must start at column {} on row {label_row} only",
+                    inner_left + padding
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn play_area_frame_is_41x25_and_centred() {
+        for (width, height, left, top) in [(100u16, 36u16, 29usize, 5usize), (60, 30, 9, 2)] {
+            let grid = lines(&frame_text(&seed_42_app(), width, height));
+            let panel = panel_layout(width, height);
+            assert_eq!((panel.left as usize, panel.top as usize), (left, top));
+            assert_eq!(PANEL_WIDTH, 41);
+            assert_eq!(PANEL_HEIGHT, 25);
+
+            assert_eq!(grid[top][left], '╭');
+            assert_eq!(grid[top][left + 40], '╮');
+            assert_eq!(grid[top + 24][left], '╰');
+            assert_eq!(grid[top + 24][left + 40], '╯');
+            assert_eq!(
+                grid[top].iter().filter(|character| **character == '╭').count(),
+                1,
+                "{width}x{height} top edge has a second ╭"
+            );
+            assert_eq!(
+                grid[top + 24]
+                    .iter()
+                    .filter(|character| **character == '╰')
+                    .count(),
+                1,
+                "{width}x{height} bottom edge has a second ╰"
             );
         }
     }
 
     #[test]
-    fn board_block_is_35x19_and_between_header_and_footer() {
+    fn frame_top_edge_shows_score_and_best() {
+        let game = Game::from_state(Board::empty(), 1234, 5678, 42);
+        for (width, height) in [(100u16, 36u16), (60, 30)] {
+            let grid = lines(&frame_text(&App::new(game.clone()), width, height));
+            let panel = panel_layout(width, height);
+            let row = panel.top as usize;
+            let start = panel.left as usize + 2;
+            let edge: String = grid[row][start..].iter().collect();
+            let text = "SCORE 1234   BEST 5678";
+
+            assert!(
+                edge.starts_with(text),
+                "{width}x{height} top edge is {edge:?}"
+            );
+            assert_eq!(grid[row][panel.left as usize], '╭');
+            assert_eq!(grid[row][start - 1], '─');
+            assert_eq!(grid[row][start + text.chars().count()], '─');
+            assert_eq!(grid[row][panel.left as usize + 40], '╮');
+        }
+    }
+
+    #[test]
+    fn header_shows_title_only() {
+        let game = Game::from_state(Board::empty(), 1234, 5678, 42);
+        let text = frame_text(&App::new(game), 100, 36);
+        let header = text.lines().next().unwrap_or_default();
+
+        assert!(header.contains("2048"), "header must keep the title: {header}");
+        assert!(!header.contains("SCORE"), "header must not show SCORE: {header}");
+        assert!(!header.contains("BEST"), "header must not show BEST: {header}");
+        assert!(header.trim_end().ends_with('┐'));
+    }
+
+    #[test]
+    fn board_block_is_39x23_and_between_header_and_footer() {
         for (width, height) in [(100u16, 36u16), (60, 30)] {
             let layout = board_layout(width, height);
-            assert_eq!(BOARD_WIDTH, 35);
-            assert_eq!(BOARD_HEIGHT, 19);
-            assert_eq!(layout.left, if width == 100 { 32 } else { 12 });
-            assert!(layout.top > 0, "board must start below the header");
+            let panel = panel_layout(width, height);
+            assert_eq!(BOARD_WIDTH, 39);
+            assert_eq!(BOARD_HEIGHT, 23);
+            assert_eq!(panel.left, if width == 100 { 29 } else { 9 });
+            assert!(panel.top > 0, "the play area must start below the header");
             assert!(
-                layout.top + BOARD_HEIGHT < height - 3,
-                "board must end above the footer"
+                panel.top + PANEL_HEIGHT - 1 <= height - 4,
+                "panel bottom {} must not reach the footer at {}",
+                panel.top + PANEL_HEIGHT - 1,
+                height - 3
             );
+            assert_eq!(layout.top, panel.top + 1);
+            assert_eq!(layout.left, panel.left + 1);
         }
     }
 
@@ -519,8 +700,8 @@ mod tests {
             let column = (cell % 4) as u16;
             let x = (layout.left + column * (CARD_WIDTH + CARD_GAP)) as usize;
             let y = (layout.top + row * (CARD_HEIGHT + CARD_GAP)) as usize;
-            for dy in 1..3usize {
-                for dx in 1..7usize {
+            for dy in 1..CARD_HEIGHT as usize - 1 {
+                for dx in 1..CARD_WIDTH as usize - 1 {
                     let character = grid[y + dy][x + dx];
                     if character.is_ascii_digit() {
                         digits.push((cell, character));
@@ -557,34 +738,15 @@ mod tests {
     }
 
     #[test]
-    fn header_shows_title_score_and_best() {
-        let game = Game::from_state(Board::empty(), 1234, 5678, 42);
-        let text = frame_text(&App::new(game), 100, 36);
-        let header = text.lines().next().unwrap_or_default();
-        let normalised = header.split_whitespace().collect::<Vec<_>>().join(" ");
-
-        let mut cursor = 0;
-        for token in ["2048", "SCORE", "1234", "BEST", "5678"] {
-            let Some(found) = normalised[cursor..].find(token) else {
-                panic!("header is missing {token}: {normalised}");
-            };
-            cursor += found + token.len();
-        }
-    }
-
-    #[test]
     fn footer_lists_the_controls() {
-        let text = frame_text(&seed_42_app(), 100, 36);
-        let footer = text
-            .lines()
-            .rev()
-            .take(3)
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_lowercase();
+        for (width, height) in [(100u16, 36u16), (60, 30)] {
+            let text = frame_text(&seed_42_app(), width, height);
+            let lines: Vec<&str> = text.lines().collect();
+            let footer = lines[height as usize - 3].to_lowercase();
 
-        for word in ["arrows", "wasd", "restart", "quit"] {
-            assert!(footer.contains(word), "footer is missing {word}: {footer}");
+            for word in ["arrows", "wasd", "restart", "quit"] {
+                assert!(footer.contains(word), "footer is missing {word}: {footer}");
+            }
         }
     }
 
