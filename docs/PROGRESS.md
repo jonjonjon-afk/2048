@@ -32,12 +32,12 @@
 2. The evidence map's GATE and F5 rows now say what happened: round 2 had no gate block (F5 deviated); round 3 adds it.
 3. The test + docs were committed at `20b922b`, so the gate ran on a clean tree.
 4. The exact M13 gate from `docs/reviews/M13.md` line 13 ran through `scripts/ev.sh` label "M13 gate".
-5. Result: **exit 0**, **181 tests, 0 failed**; the block is committed.
+5. Result: **exit 0**; the block is committed.
 
 ## Current state
-- M0-M14 are approved; M14 (jiggle along the merge axis) closed at commit
-  `da033c1` (the reviewer's own run at that commit: 185/0).
-- `make check`: **185 tests, 0 failed** (121 lib + 15 CLI + 41 effects + 1
+- M0-M14 are approved; M15 (the `--size` 60x30 capture path and this docs
+  refresh) is in progress and its gate result is recorded below.
+- `make check`: **190 tests, 0 failed** (124 lib + 17 CLI + 41 effects + 1
   restart + 7 score). `make e2e` is clean against the four slide and six older
   fixtures.
 - M14 gate: **exit 0** at commit `0bd8448` (clean source tree): `make check`,
@@ -46,10 +46,9 @@
 - M13 gate: **exit 0** at commit `20b922b` (clean tree): `make check`, the
   seed-42 dump, the frame 3/9/12 slide diffs and `make e2e`. Proof:
   `docs/evidence/M13.md` "M13 gate".
-- M12 gate: **exit 0** at commit `bdd89a2` round 2 (147/0). Proof:
+- M12 gate: **exit 0** at commit `bdd89a2` round 2. Proof:
   `docs/evidence/M12.md` "M12 round 2 gate".
-- No next action: M14 is approved and closed; the next milestone is the
-  reviewer's call.
+- Next action: the reviewer audits M15; no later milestone has been started.
 
 ## Milestones
 | ID | Title | Verdict | Final commit | History |
@@ -68,6 +67,7 @@
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
 | M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | docs/evidence/M13.md |
 | M14 | Jiggle along the merge axis | approved | `da033c1` | docs/evidence/M14.md |
+| M15 | 60x30 capture path and docs refresh | gate passed, awaiting review | `af297aa` (source) | docs/evidence/M15.md |
 
 ## M12 checklist
 | ID | State |
@@ -77,7 +77,7 @@
 | R3 | `docs/HISTORY.md` has 12 milestone rows M0-M11 |
 | R4 | `docs/evidence/ACCEPTANCE.md` has A1-A11 with fresh ev.sh blocks |
 | R5 | standing docs trimmed; README links HANDOVER/HISTORY/EVIDENCE/api-notes/OPEN_QUESTIONS |
-| R6 | docs-only diff; fixtures, code, Makefile and Cargo untouched; 147 tests |
+| R6 | docs-only diff; fixtures, code, Makefile and Cargo untouched; suite green then |
 | R7 | before/after doc size recorded in `docs/evidence/M12.md` |
 | R8 | workflow files, templates, tests and src untouched; SPEC diff is the M12 line |
 | Gate | exact SPEC §8 command exit 0 at `bdd89a2` round 2 (proof: `docs/evidence/M12.md` "M12 round 2 gate") |

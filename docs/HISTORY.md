@@ -1,8 +1,9 @@
 # HISTORY — one line per milestone
 
-> Written by the coder for M12. The per-milestone reviews and raw logs were removed
-> from the working tree to keep the handover lean; every one of them is still in git
-> history at the commits below (`git show <commit>:docs/reviews/M<n>.md`).
+> Started in M12 and kept current through M15. The per-milestone reviews and raw
+> logs were removed from the working tree to keep the handover lean; every one of
+> them is still in git history at the commits below
+> (`git show <commit>:docs/reviews/M<n>.md`).
 
 | ID | Title | Verdict | Final commit | Gate |
 |---|---|---|---|---|
@@ -18,6 +19,8 @@
 | M9 | Handover refresh | approved (round 2) | `9e22a51` | exit 0 |
 | M10 | Round merge ripple (post-handover) | approved (round 2) | `6adddbe` | exit 0 |
 | M11 | Half-block ripple (post-handover) | approved (round 2) | `9f2f25e` (approval audit `687804b`) | exit 0 |
+| M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | exit 0 |
+| M14 | Jiggle along the merge axis | approved | `da033c1` | exit 0 |
 
 ## Notes
 - The two later ripple changes are M10 (Chebyshev square -> aspect-corrected
@@ -27,9 +30,16 @@
 - Live acceptances by the user: M6 count-up ("score count, looks good"), M7
   linear fade (chosen live from the review options), M8 named table ("go,
   everything looks great."), M10 round crest ("that is looking clean! very
-  good.") and M11 half blocks ("it looks good!").
+  good."), M11 half blocks ("it looks good!"), M13 slide and jiggle
+  ("gameplay feels good now, jiggle and slide is working properly") and M14
+  merge axis ("everything is working fine").
 - M12 is documentation/repo cleanup only; it changes no application code, test,
-  fixture, Makefile or Cargo file. The milestone table stops at M11 because
-  M12 has no runtime behaviour of its own.
+  fixture, Makefile or Cargo file, so it stays out of the milestone table.
+  M13 (tile slide, key lockout, effects at the landing, merge jiggle) and M14
+  (jiggle along the merge axis) are the two motion milestones that follow it.
+- After M14: the 140 ms slide and the 240 ms jiggle read from
+  `src/anim.rs` (pure geometry over injected ages) and are pinned by the four
+  slide fixtures; M15 adds `--size <WxH>` so the 60x30 capture has a documented
+  path.
 - Commit hashes are the last commit of each acknowledged milestone; the full
   chain is in `git log`.

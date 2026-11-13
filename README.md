@@ -18,7 +18,9 @@ The game is specified in [`docs/SPEC.md`](docs/SPEC.md).
 - **M9 handover refresh:** approved — current README, acceptance rows, clean-clone gate.
 - **M10 round merge ripple:** approved — aspect-corrected Euclidean wavefront.
 - **M11 half-block ripple:** approved — `▀`/`▄` subcells with two colours per cell.
-- **M12 lean handover:** in review — docs consolidated, no application code change.
+- **M12 lean handover:** approved — docs consolidated, no application code change.
+- **M13 tile slide and fusion jiggle:** approved — a 140 ms ease-out glide, move keys ignored until it lands, effects starting at the landing, and a 240 ms merge jiggle.
+- **M14 jiggle along the merge axis:** approved — columns for left/right moves, rows for up/down moves.
 
 The project is feature-complete for the specification. The remaining checks are
 live-terminal ones that need a human at a real keyboard: truecolour and shimmer,
@@ -52,6 +54,11 @@ replaces the game-over view. Its keys are separate from the game controls:
 While name entry is open, `R`, `Q`, `H` and the arrow keys do not restart, quit
 or toggle anything: letters are typed into the name and arrows are ignored.
 
+A move key pressed while a tile is still gliding is ignored: each move's tiles
+slide for 140 ms on an ease-out curve, the merge and spawn effects start when
+they land, and a merged card then wobbles for 240 ms along the merge axis
+(columns after a left/right move, rows after an up/down move). `R` clears it.
+
 The minimum supported terminal is **60x30** (columns x rows); **100x36** is the
 recommended size and the layout used by the committed snapshots. Below the
 minimum the app shows a readable notice instead of the board and still quits
@@ -83,15 +90,28 @@ make demo    # seeded showcase board and effects
 make e2e     # all integration suites + deterministic captures in docs/evidence/e2e/, checked against fixtures
 ```
 
+Headless captures (no keyboard needed):
+```sh
+cargo run --quiet -- --render-once --demo-slide --frame 9 --no-persist                       # 100x36 motion frame
+cargo run --quiet -- --render-once --demo-slide --frame 9 --size 60x30 --no-persist         # the 60x30 capture
+```
+`--size <WxH>` sets the `--render-once` frame size (default `100x36`, minimum
+`60x30`); on its own it is an error. It is the documented way to regenerate the
+60x30 capture.
+
+`make check` runs 190 tests: 124 lib + 17 CLI + 41 effects + 1 restart +
+7 score. The committed snapshots and fixtures are the exact expected frames.
+
 Requirements: Rust 1.88+, GNU make, and a terminal with 24-bit colour and at
 least 60x30 cells (100x36 recommended). Everything is offline; there is no
 network, GPU or image protocol involved.
 
 The layout is a pure renderer over a pure core: `src/game.rs` owns the rules and
 `src/rng.rs` the deterministic Xorshift64* stream, a dedicated storage module
-owns the table format, and `src/shell.rs` is the only place that touches the
-terminal and the store. `src/effects.rs` advances only from an injected `dt`, so every frame
-can be reproduced with `--seed` and `--frame`.
+owns the table format, `src/anim.rs` owns the slide and jiggle geometry over
+injected ages, and `src/shell.rs` is the only place that touches the terminal
+and the store. `src/effects.rs` advances only from an injected `dt`, so every
+frame can be reproduced with `--seed` and `--frame`.
 
 ## Project workflow
 The reviewer agent plans milestones, writes requirements and audits the result;
@@ -101,7 +121,7 @@ the coder agent implements them, maintains this README, and records proof in
 
 ## More detail
 - [`docs/HANDOVER.md`](docs/HANDOVER.md) — entry point: run commands, controls, storage, architecture, proof.
-- [`docs/HISTORY.md`](docs/HISTORY.md) — one line per milestone M0-M11 with verdict and commit.
+- [`docs/HISTORY.md`](docs/HISTORY.md) — one line per milestone M0-M14 with verdict and commit.
 - [`docs/SPEC.md`](docs/SPEC.md) — rules, layout, CLI, milestones and acceptance.
 - [`docs/EVIDENCE.md`](docs/EVIDENCE.md) — acceptance ID to proof in `docs/evidence/ACCEPTANCE.md`.
 - [`docs/api-notes.md`](docs/api-notes.md) — verified external facts.

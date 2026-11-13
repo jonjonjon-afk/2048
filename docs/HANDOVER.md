@@ -6,12 +6,9 @@
 > rules are `AGENTS.md`.
 
 ## Current state
-- All milestones M0-M11 are approved; the game is feature-complete for the SPEC.
-- M12 is a documentation/repo cleanup only: the per-milestone reviews and raw
-  logs were consolidated into this file, `docs/HISTORY.md` and
-  `docs/evidence/ACCEPTANCE.md`. No application code, test, fixture, Makefile
-  or Cargo change.
-- `make check` is 147 tests, 0 failed (99 lib + 12 CLI + 28 effects + 1 restart
+- All milestones M0-M14 are approved; M15 (the `--size` 60x30 capture path and
+  this docs refresh) is in progress. The game is feature-complete for the SPEC.
+- `make check` is 190 tests, 0 failed (124 lib + 17 CLI + 41 effects + 1 restart
   + 7 score). The clean-clone gate passes.
 - Platform: Linux-first, Rust 1.88+ (edition 2021), offline; no network, GPU or
   image protocol.
@@ -30,17 +27,21 @@ cargo run --quiet -- --dump --seed 42            # exact core block, SPEC §5.6
 cargo run --quiet -- --render-once --seed 42 --no-persist
 cargo run --quiet -- --render-once --demo-merge --frame 14 --no-persist
 cargo run --quiet -- --render-once --demo-slide --frame 9 --no-persist   # M13 card slide + jiggle
+cargo run --quiet -- --render-once --demo-slide --frame 9 --size 60x30 --no-persist   # the 60x30 capture
 script -qec "./target/debug/game2048 --self-test-tui --seed 42 --no-persist --fps 60" /dev/null
 ```
 `--self-test-tui` opens the real terminal, draws 120 frames at the live pacing,
 restores the terminal, prints `self-test-tui: 120 frames in <secs>s (<fps> fps)`
 and exits 0. `--demo`, `--demo-merge` and `--no-persist` always use an in-memory
-store and never touch real data. The live `--demo` and `--demo-merge` modes
-animate the M13 slide and jiggle; `--render-once --demo-merge` keeps the
-slide-less app so the pre-M13 fixtures stay byte-identical, while
-`--render-once --demo-slide` captures the pinned motion frames. The 240 ms
-merge jiggle follows the merge axis: left/right moves shake in columns,
-up/down moves in rows, with the first beat back toward the incoming tile.
+store and never touch real data. `--size <WxH>` (minimum 60x30, only with
+`--render-once`) is the documented way to regenerate the 60x30 capture; the
+default stays 100x36.
+
+Motion: after a move that changes the board each tile glides to its new slot on a
+140 ms ease-out (quadratic) curve, and move keys are ignored until it lands. The
+merge and spawn effects start at the landing, and each merged card then wobbles
+for 240 ms along the merge axis — the first beat back toward the incoming tile.
+Left/right moves shake in columns, up/down moves in rows.
 
 ## Controls
 | Key | Action |
@@ -101,6 +102,7 @@ open during play.
 | Score display | `src/score.rs` | 450 ms ease-out count; display only, no clock |
 | Storage | `src/highscore.rs` | `highscores` format, named table, legacy migration, file + memory stores |
 | Effects | `src/effects.rs` | plasma phase, merge ripple, sparks, flash, pop, BEST pulse; advanced only by injected `dt` |
+| Motion | `src/anim.rs` | pure slide anchors and jiggle offsets over injected ages: no clock, no I/O, no drawing |
 | Update | `src/update.rs`, `src/input.rs` | keys -> actions; pure `update(state, dt)`; name entry state machine |
 | Shell | `src/shell.rs`, `src/terminal.rs` | event loop, deadline pacing, store wiring, terminal guard and restore |
 | Renderer | `src/render.rs` | layout, cards, panel, overlays, effect painting |
@@ -117,9 +119,11 @@ store. Board scoring/merging lives only in `game`, the table format only in
   `### ACC A<n> ...` heading, a `date:`, the real `$` command and its output and
   exit code.
 - `docs/EVIDENCE.md` — acceptance ID -> tests -> `ACC A<n>` raw-log label map.
+- `docs/evidence/M13.md`, `M14.md`, `M15.md` — the raw logs for the slide and
+  jiggle work and the M15 60x30 capture path, each with its exact gate.
 - `docs/evidence/M12.md` — the M12 cleanup and gate log (R1-R8, size and pointer
   audits, the exact gate); its duplicate A blocks are not cited.
-- `docs/HISTORY.md` — one line per milestone M0-M11 with verdict, final commit
+- `docs/HISTORY.md` — one line per milestone M0-M14 with verdict, final commit
   and gate result.
 - `docs/api-notes.md` — verified external facts with sources.
 - `docs/OPEN_QUESTIONS.md` — closed decisions and their reasons.
