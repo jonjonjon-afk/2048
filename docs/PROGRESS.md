@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M4 (polish and handover) — approved with follow-ups; U1/U2 done, awaiting reviewer confirmation
-- Last gate result: gate exit 0 (docs/evidence/M4.md "M4 gate final round 2", run at 641a5b1 after the F2 revert)
-- Next action: stop; the human still owes the live-terminal checks
+- Milestone: M5 (prettier board and real 60 FPS) — gate passed, awaiting verdict (round 2: docs-only fixes F1-F4)
+- Last gate result: gate exit 0 (docs/evidence/M5.md "M5 gate", run at HEAD 6b33091 after the round-1 code work); the round-2 rerun is recorded as "M5 gate final"
+- Next action: stop; the human still owes the live kitty check (digit centring, play-area frame, smoothness)
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -14,16 +14,14 @@
 | M1 | Headless core and storage | gate passed, approved | approved | docs/evidence/M1.md |
 | M2 | TUI shell and controls | gate passed | approved | docs/evidence/M2.md |
 | M3 | Shader-style effects | gate passed | approved with follow-ups | docs/evidence/M3.md |
-| M4 | Polish and handover | gate passed | pending | docs/evidence/M4.md |
+| M4 | Polish and handover | gate passed | approved with follow-ups | docs/evidence/M4.md |
+| M5 | Prettier board and real 60 FPS | gate passed | awaiting verdict (round 2) | docs/evidence/M5.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
-- M5 R1: cards 9x5, board 39x23, value on the middle inner row centred with floor division; retarget layout tests.
-- M5 R2: 41x25 rounded play-area frame at floor-centred panel_layout, SCORE/BEST on its top edge, header title only; retarget best_pulse test.
-- M5 R3: regenerate the two frame fixtures and the three effect fixtures, show both sizes in evidence.
-- M5 R4: DEFAULT_FPS 60, usage text, public `next_frame_deadline` + `frame_pacing_skips_missed_frames`, live loop poll(remaining).
-- M5 R5: `SelfTestReport` Display line, 120 paced frames, main prints one stdout line after the guard drops.
-- M5 R6: `make e2e` captures under `docs/evidence/e2e/`, committed, README + Makefile comment updated.
-- M5 R7/R8: touch only allowed files, record diffs, fill evidence + EVIDENCE rows, run the M5 gate through ev.sh.
+- Round 2, F1: record the `Instant`/`Paragraph`/`script` facts in `docs/api-notes.md` and the panel-edge note in `docs/OPEN_QUESTIONS.md`.
+- Round 2, F2: fix the M4 verdict row, keep M5 as gate passed / awaiting verdict, add the two M5 decisions.
+- Round 2, F3: commit the state files, re-run the exact SPEC §8 gate as "M5 gate final", commit the log.
+- Round 2, F4: send the final report answering R1-R8; no `src/` or `tests/` change this round (F5 resolved).
 
 ## Decisions (one line each, with the reason)
 - Use `game2048` as both package and binary name, because R5 in M1 names `CARGO_BIN_EXE_game2048`.
@@ -42,9 +40,12 @@
 - M4: `Shell` queues at most one `warning: <store error>` line; `main` prints it after `run_live` returns, so the guard has restored the terminal (N3).
 - M4: the A3 child re-executes the test binary via `current_exe()` and resolves the real default path with `XDG_DATA_HOME` set only in `Command::env`; the parent never mutates its own environment.
 - M4: `make e2e` writes the three captures under `docs/evidence/M4/` and `diff -u`s each against its committed fixture, so drift fails the target.
+- M5: the play-area edge text starts at `panel.left + 2` (a `─` sits at `+1`), because R2 fixes that column and the block corners must stay intact.
+- M5: `make e2e` captures live in `docs/evidence/e2e/` from now on; the M4 captures are history and stay byte-unchanged (R6).
 
 ## Known issues
 - The agent shell is headless (no tty); live truecolour and the plasma shimmer are still the human's visual check (Q1/N5).
 - The pty reports terminal sizes that are not the target 100x36; the TestBackend snapshots carry the visible-layout proof.
-- The live measured-`dt` loop compiles and is wired but was not exercised under a real tty here; the deterministic frame tests carry the animation proof.
+- The live measured-`dt` loop compiles and the pty self-test exercises the same deadline pacing, but live keyboard input under a real tty was not exercised here; the deterministic frame tests carry the animation proof.
+- M5 round 2 changed documentation only; the geometry stays flush 41x25 with a 60x30 minimum (F5 resolved by the human's accepted build).
 - Human checks remaining before final acceptance: truecolour shimmer and effect frame 14, live cursor/screen restore, and BEST surviving a real restart via `make run`.
