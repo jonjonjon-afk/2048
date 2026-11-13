@@ -1,7 +1,14 @@
 # PROGRESS
 
-> Owned by the coder. Compact state after M14 close-out; the entry point is
+> Owned by the coder. Compact state after M15 close-out; the entry point is
 > `docs/HANDOVER.md`.
+
+## M15 close-out plan (approved, docs only)
+1. Commit `docs/evidence/M15.md` exactly as it stands; no ev.sh block rewritten.
+2. M15 row -> `approved` with its final commit; current state -> M0-M15 approved, no next action.
+3. README status gains one M15 line, in order, keeping the list.
+4. Commit the reviewer's `docs/reviews/M15.md` byte-for-byte.
+5. Nothing else: no src, tests, fixtures, SPEC, EVIDENCE, M13/M14 evidence; no gate re-run.
 
 ## M15 plan (round 1)
 1. Commit the reviewer's SPEC §5.6/§8 and `docs/reviews/M15.md` as-is.
@@ -35,8 +42,8 @@
 5. Result: **exit 0**; the block is committed.
 
 ## Current state
-- M0-M14 are approved; M15 (the `--size` 60x30 capture path and this docs
-  refresh) is complete and awaiting review: its gate exits 0, proof below.
+- M0-M15 are approved; no next action. M15 (the `--size` 60x30 capture path and
+  its docs refresh) was approved at `8d37eef`, with the gate result below.
 - `make check`: **190 tests, 0 failed** (124 lib + 17 CLI + 41 effects + 1
   restart + 7 score). `make e2e` is clean against the four slide and six older
   fixtures.
@@ -52,7 +59,7 @@
   `docs/evidence/M13.md` "M13 gate".
 - M12 gate: **exit 0** at commit `bdd89a2` round 2. Proof:
   `docs/evidence/M12.md` "M12 round 2 gate".
-- Next action: the reviewer audits M15; no later milestone has been started.
+- Next action: none — M0-M15 are approved; no later milestone has been started.
 
 ## Milestones
 | ID | Title | Verdict | Final commit | History |
@@ -71,7 +78,7 @@
 | M11 | Half-block ripple | approved (round 2) | `9f2f25e` | docs/HISTORY.md |
 | M13 | Tile slide and fusion jiggle | approved (round 3) | `b063ce3` | docs/evidence/M13.md |
 | M14 | Jiggle along the merge axis | approved | `da033c1` | docs/evidence/M14.md |
-| M15 | 60x30 capture path and docs refresh | gate exit 0, awaiting review | `8d37eef` | docs/evidence/M15.md |
+| M15 | 60x30 capture path and docs refresh | approved | `8d37eef` | docs/evidence/M15.md |
 
 ## M12 checklist
 | ID | State |

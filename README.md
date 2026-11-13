@@ -21,6 +21,7 @@ The game is specified in [`docs/SPEC.md`](docs/SPEC.md).
 - **M12 lean handover:** approved — docs consolidated, no application code change.
 - **M13 tile slide and fusion jiggle:** approved — a 140 ms ease-out glide, move keys ignored until it lands, effects starting at the landing, and a 240 ms merge jiggle.
 - **M14 jiggle along the merge axis:** approved — columns for left/right moves, rows for up/down moves.
+- **M15 60x30 capture path and docs refresh:** approved — `--size` for `--render-once`, a one-command 60x30 capture path.
 
 The project is feature-complete for the specification. The remaining checks are
 live-terminal ones that need a human at a real keyboard: truecolour and shimmer,
