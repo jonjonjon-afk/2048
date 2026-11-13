@@ -3,9 +3,9 @@
 > Owned by the coder. This file is the coder's memory between assignments: keep it short and current.
 
 ## Current state
-- Milestone: M7 (merge ripple) — gate passed, awaiting verdict (round 1)
-- Last gate result: gate exit 0 (docs/evidence/M7.md "M7 gate final"); 125 tests, 0 failed
-- Next action: stop; the human's live check (does the ripple read as a wave that crosses the board, returns from the walls and fades) is still open
+- Milestone: M7 (merge ripple) — round 2 gate passed, awaiting verdict (round 2)
+- Last gate result: gate exit 0 (docs/evidence/M7.md "M7 gate round 2"); 125 tests, 0 failed
+- Next action: stop; the human's live check of the linear fade (does the wave dim as it crosses the board) is still open
 
 ## Milestones
 | ID | Title | Status | Reviewer verdict | Evidence |
@@ -17,7 +17,7 @@
 | M4 | Polish and handover | gate passed | approved with follow-ups | docs/evidence/M4.md |
 | M5 | Prettier board and real 60 FPS | gate passed | approved | docs/evidence/M5.md |
 | M6 | Score count-up | gate passed | approved with follow-ups | docs/evidence/M6.md |
-| M7 | Merge ripple | gate passed | awaiting verdict (round 1) | docs/evidence/M7.md |
+| M7 | Merge ripple | gate passed | awaiting verdict (round 2) | docs/evidence/M7.md |
 
 ## Plan for the current assignment (10 lines max; rewrite each assignment)
 - M7 round 2, F1: SPEC §5.4 Brightness — mix the glyph fg from the renderer background by the cell amplitude, `f64::round` per channel.
@@ -58,6 +58,10 @@
 - M7: glyph choice and colour live behind `Ripple::glyph_at`, so the renderer only writes cells and the pins can be asserted on the effect layer too.
 - M7: the ripple is drawn in `render_effects` between `render_board_cards` and `render_board_labels`, which is exactly the §5.4 layering sentence.
 - M7: `two_merges_keep_two_waves` triggers the effect layer directly (cells 0 and 5), because one move cannot merge at both cells; a real Left move with cells 0 and 12 covers the update wiring (Q12).
+- M7 round 2: `Ripple::front_at` returns the glyph *and* the amplitude that selected it, so `draw_ripple` cannot dim by a different value than the one that chose the glyph.
+- M7 round 2: the brightness mix lives in the renderer (`dimmed_colour`), because the background is renderer-owned; the effect layer stays colour-free.
+- M7 round 2: `f64::round` is used per channel (round half away from zero), matching the four literals `Rgb(1,152,197)`, `Rgb(4,87,117)`, `Rgb(3,98,130)`, `Rgb(5,51,72)` in the review.
+- M7 round 2: the text fixtures and the e2e capture needed no regeneration (colour is not in the plain-text frame); they have a 0-line diff from `d6909ef`.
 
 ## Known issues
 - The agent shell is headless (no tty); live truecolour and the plasma shimmer are still the human's visual check (Q1/N5).
@@ -66,5 +70,6 @@
 - M5 round 2 changed documentation only; the geometry stays flush 41x25 with a 60x30 minimum (F5 resolved by the human's accepted build).
 - M6: the count-up *feel* was watched live by the human ("score count, looks good") and accepted; the fixed-`dt` tests and G15 frames remain the proof here.
 - M7: the ripple *feel* was not watched live by the coder; the pinned cells, the hand table and frame 14 are the proof, and the human's live wave/return/fade check is open.
+- M7 round 2: the linear fade is proven per-channel in the buffer, but how it feels over the 900 ms at 60 FPS is the human's live check; the text fixtures cannot show colour.
 - M7: the label layer paints its whole 7-cell row, so a ripple glyph on an occupied card's label row takes that tile's foreground colour; digits still win in their own cell and no pin sits on a label row.
 - Human checks remaining before final acceptance: truecolour shimmer and effect frame 14, the M7 ripple reading as a returning wave, live cursor/screen restore, and BEST surviving a real restart via `make run`.
