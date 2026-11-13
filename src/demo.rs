@@ -9,11 +9,23 @@ use core::time::Duration;
 
 use crate::action::Action;
 use crate::cli::DEMO_SEED;
-use crate::game::{Direction, Game};
+use crate::game::{Board, Direction, Game};
 use crate::update::App;
 
 /// Duration of one animation frame in the `--frame N` contract.
 pub const FRAME_MILLIS: u64 = 16;
+
+/// Seed for the `--demo-slide` spawn.
+///
+/// The synthetic board and its one `Down` move are fixed; the only random draw
+/// is the post-move spawn. The M13 review pins that spawn at cell 11 (value 2).
+/// Under the SPEC 5.2 draw order seed 42 would spawn at cell 9, so the demo
+/// uses the smallest seed that reproduces the reviewed board.
+pub const DEMO_SLIDE_SEED: u64 = 7;
+
+/// The synthetic `--demo-slide` board (SPEC 8, M13).
+pub const DEMO_SLIDE_BOARD: [[u32; 4]; 4] =
+    [[0, 0, 2, 0], [0, 0, 2, 0], [4, 0, 0, 0], [8, 2, 0, 0]];
 
 /// The exact elapsed time for animation frame `frame` (`N * 16 ms`).
 pub fn frame_duration(frame: u64) -> Duration {
@@ -25,8 +37,23 @@ pub fn frame_duration(frame: u64) -> Duration {
 /// The move is the update that starts the effects, so the effect clock reads
 /// exactly `frame * 16 ms` afterwards.
 pub fn demo_merge_app(frame: u64) -> App {
-    let mut app = App::new(Game::new(DEMO_SEED, 0));
+    let mut app = App::new(Game::new(DEMO_SEED, 0)).without_slide();
     app.update(Some(Action::Move(Direction::Up)), frame_duration(frame));
+    app
+}
+
+/// The `--demo-slide` app advanced to animation frame `frame`.
+///
+/// The synthetic board gets one `Down` move at t = 0; the slide is then driven
+/// in 16 ms steps so frames 9 and later are measured from the landing, not
+/// from a single long step that would swallow the jiggle's start.
+pub fn demo_slide_app(frame: u64) -> App {
+    let board = Board::from_rows(DEMO_SLIDE_BOARD);
+    let mut app = App::new(Game::from_state(board, 0, 0, DEMO_SLIDE_SEED));
+    app.update(Some(Action::Move(Direction::Down)), Duration::ZERO);
+    for _ in 0..frame {
+        app.update(None, Duration::from_millis(FRAME_MILLIS));
+    }
     app
 }
 
@@ -62,5 +89,39 @@ mod tests {
         assert_eq!(frame_duration(0), Duration::ZERO);
         assert_eq!(frame_duration(14), Duration::from_millis(224));
         assert_eq!(demo_merge_app(0).effects.elapsed(), Duration::ZERO);
+    }
+
+    #[test]
+    fn demo_slide_timeline_is_pinned() {
+        let at_three = demo_slide_app(3);
+        assert!(at_three.sliding(), "frame 3 is inside the 140 ms slide");
+        assert_eq!(at_three.effects.elapsed(), Duration::from_millis(48));
+
+        let at_nine = demo_slide_app(9);
+        assert!(!at_nine.sliding(), "frame 9 (144 ms) is past the landing");
+        assert_eq!(at_nine.effects.elapsed(), Duration::from_millis(144));
+
+        let settled = at_three.game.board;
+        assert_eq!(settled.cell(8), 4);
+        assert_eq!(settled.cell(11), 2);
+        assert_eq!(settled.cell(12), 8);
+        assert_eq!(settled.cell(13), 2);
+        assert_eq!(settled.cell(14), 4);
+        assert_eq!(at_three.game.score, 4);
+    }
+
+    #[test]
+    fn the_demo_captures_do_not_animate() {
+        for frame in [0u64, 4, 14, 24, 30] {
+            let app = demo_merge_app(frame);
+            assert!(!app.sliding(), "frame {frame} must not start a slide");
+            assert_eq!(
+                app.effects.elapsed(),
+                frame_duration(frame),
+                "frame {frame} keeps its single-step effect clock"
+            );
+        }
+        let app = demo_merge_app(0);
+        assert_eq!(app.effects.ripples().len(), 1, "the merge still fires");
     }
 }

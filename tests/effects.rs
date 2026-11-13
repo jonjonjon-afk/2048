@@ -189,7 +189,9 @@ fn effects_do_not_change_the_game_state() {
     ];
 
     for direction in directions {
-        app.update(Some(Action::Move(direction)), Duration::from_millis(16));
+        // M13: 150 ms completes the slide inside this update, so the next move
+        // is not swallowed by the 140 ms move lock.
+        app.update(Some(Action::Move(direction)), Duration::from_millis(150));
         plain.apply_move(direction);
 
         assert_eq!(app.game.board, plain.board);
@@ -621,6 +623,8 @@ fn one_move_with_two_merges_keeps_two_waves() {
     let board = Board::from_rows([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [2, 2, 0, 0]]);
     let mut app = App::new(Game::from_state(board, 0, 0, 42));
     app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+    // M13: the ripples start at the landing, not on the keypress.
+    app.update(None, Duration::from_millis(140));
 
     let cells: Vec<usize> = app
         .effects

@@ -24,18 +24,23 @@ fn millis(value: u64) -> Duration {
 #[test]
 fn a_merge_during_a_count_retargets_from_the_shown_value() {
     let mut app = sixteen_point_app();
-    app.update(Some(Action::Move(Direction::Left)), millis(50));
+    // M13: 140 ms completes the slide so the next move is not swallowed.
+    app.update(Some(Action::Move(Direction::Left)), millis(140));
     assert_eq!(app.game.score, 16);
-    assert_eq!(app.shown_score(), 4, "0 -> 16 at t = 50 ms shows 4");
+    assert_eq!(
+        app.shown_score(),
+        10,
+        "0 -> 16 at t = 140 ms: floor(16 * (1 - (1 - 140/450)^3)) = 10"
+    );
 
-    // The next move adds 8 while the count is still running at 4.
+    // The next move adds 8 while the count is still running at 10.
     app.game.board = Board::from_rows([[4, 4, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
     app.update(Some(Action::Move(Direction::Left)), millis(100));
     assert_eq!(app.game.score, 24, "the merge raised the real score to 24");
     assert_eq!(
         app.shown_score(),
-        14,
-        "4 + floor(20 * (1 - (1 - 100/450)^3)) = 14"
+        17,
+        "10 + floor(14 * (1 - (1 - 100/450)^3)) = 17"
     );
 
     app.update(None, millis(350));

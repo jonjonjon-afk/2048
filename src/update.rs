@@ -7,8 +7,9 @@
 use core::time::Duration;
 
 use crate::action::Action;
+use crate::anim::{jiggle_dx, JIGGLE_MILLIS, SLIDE_MILLIS};
 use crate::effects::Effects;
-use crate::game::Game;
+use crate::game::{Board, Game, Merge, Spawn, Track};
 use crate::highscore::{HighScores, NAME_MAX_LEN};
 use crate::score::ScoreCount;
 
@@ -20,6 +21,32 @@ pub const WARNING_MILLIS: u64 = 3_000;
 pub enum Effect {
     /// Persist this named table (one accepted entry, M8).
     SaveScores(HighScores),
+}
+
+/// The running card slide of one moved action (SPEC 5.4, M13).
+///
+/// The pre-move board and tracks are frozen when the move starts; `age` is
+/// advanced only by the injected `dt`. The landing triggers `merges`/`spawn`
+/// as effects and starts one jiggle per merged cell.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlideState {
+    /// The board as it looked before the move.
+    pub board: Board,
+    /// One track per occupied source cell, sorted by `from`.
+    pub tracks: Vec<Track>,
+    /// Merges of the move, triggered when the slide lands.
+    pub merges: Vec<Merge>,
+    /// Spawn of the move, triggered when the slide lands.
+    pub spawn: Option<Spawn>,
+    /// Time since the move started.
+    pub age: Duration,
+}
+
+/// One merged cell's 240 ms wobble, started at the slide's landing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Jiggle {
+    pub cell: usize,
+    pub age: Duration,
 }
 
 /// Everything the UI needs besides the game rules: quit latch, effects, table,
@@ -41,6 +68,12 @@ pub struct App {
     entry: Option<String>,
     /// True when the 20x12 score panel is visible, so H has nothing to toggle.
     panel_visible: bool,
+    /// The running card slide, if a moved action started one.
+    slide: Option<SlideState>,
+    /// One wobble per merged cell, started at the slide's landing.
+    jiggles: Vec<Jiggle>,
+    /// False for the pinned demo captures: they start effects immediately.
+    slides_enabled: bool,
 }
 
 impl App {
@@ -62,7 +95,43 @@ impl App {
             warning: None,
             entry: None,
             panel_visible: false,
+            slide: None,
+            jiggles: Vec::new(),
+            slides_enabled: true,
         }
+    }
+
+    /// Keep the app's game state but never start a slide.
+    ///
+    /// The pinned `--demo` / `--demo-merge` captures use this so their effects
+    /// start on the keypress, exactly as before M13 (SPEC 5.4).
+    pub fn without_slide(mut self) -> Self {
+        self.slides_enabled = false;
+        self
+    }
+
+    /// True while the 140 ms card slide is playing.
+    pub fn sliding(&self) -> bool {
+        self.slide.is_some()
+    }
+
+    /// The running slide, if any.
+    pub fn slide(&self) -> Option<&SlideState> {
+        self.slide.as_ref()
+    }
+
+    /// The running jiggles, in merge order.
+    pub fn jiggles(&self) -> &[Jiggle] {
+        &self.jiggles
+    }
+
+    /// Horizontal jiggle offset in columns for `cell`, or `None` when its card
+    /// is not wobbling (including after the 240 ms deadline).
+    pub fn jiggle_dx(&self, cell: usize) -> Option<i32> {
+        self.jiggles
+            .iter()
+            .find(|jiggle| jiggle.cell == cell)
+            .and_then(|jiggle| jiggle_dx(jiggle.age))
     }
 
     /// True while the `NEW HIGH SCORE` entry overlay is active.
@@ -101,14 +170,26 @@ impl App {
         match action {
             Some(Action::Move(direction)) => {
                 // Movement is ignored while the narrow-terminal table overlay
-                // is open during play; H closes it, R and Q still work.
-                if !self.overlay_blocks_moves() {
+                // is open during play, and while a slide is playing (SPEC 5.5,
+                // M13); H closes the overlay, R and Q still work.
+                if !self.overlay_blocks_moves() && !self.sliding() {
+                    let before = self.game.board;
                     let outcome = self.game.apply_move(direction);
-                    for merge in &outcome.merges {
-                        self.effects.trigger_merge(*merge);
-                    }
-                    if let Some(spawn) = outcome.spawned {
-                        self.effects.trigger_spawn(spawn.cell);
+                    if outcome.moved && self.slides_enabled {
+                        self.slide = Some(SlideState {
+                            board: before,
+                            tracks: outcome.tracks,
+                            merges: outcome.merges,
+                            spawn: outcome.spawned,
+                            age: Duration::ZERO,
+                        });
+                    } else {
+                        for merge in &outcome.merges {
+                            self.effects.trigger_merge(*merge);
+                        }
+                        if let Some(spawn) = outcome.spawned {
+                            self.effects.trigger_spawn(spawn.cell);
+                        }
                     }
                 }
             }
@@ -118,6 +199,8 @@ impl App {
                 self.shown.reset(0);
                 self.table_shown = false;
                 self.entry = None;
+                self.slide = None;
+                self.jiggles.clear();
             }
             Some(Action::Quit) => self.quit = true,
             Some(Action::DismissWin) => self.game.continue_after_win(),
@@ -205,10 +288,46 @@ impl App {
         self.warning.is_some_and(|remaining| !remaining.is_zero())
     }
 
-    /// Advance the effect clock, the score count and the warning timer by `dt`.
+    /// Advance the effect clock, the slide, the count and the warning by `dt`.
+    ///
+    /// A step that reaches 140 ms ends the slide, advances the *old* effects
+    /// first and only then starts the move's effects at age 0, so the leftover
+    /// of that step is dropped rather than applied to the new effects.
     fn advance(&mut self, dt: Duration) {
+        let mut landed: Option<(Vec<Merge>, Option<Spawn>)> = None;
+        if let Some(slide) = self.slide.as_mut() {
+            let next = slide.age.saturating_add(dt);
+            if next >= Duration::from_millis(SLIDE_MILLIS) {
+                landed = Some((slide.merges.clone(), slide.spawn));
+                self.slide = None;
+            } else {
+                slide.age = next;
+            }
+        }
+
         self.effects.advance(dt);
         self.shown.advance(dt);
+        for jiggle in &mut self.jiggles {
+            jiggle.age = jiggle.age.saturating_add(dt);
+        }
+        self.jiggles
+            .retain(|jiggle| jiggle.age < Duration::from_millis(JIGGLE_MILLIS));
+
+        if let Some((merges, spawn)) = landed {
+            self.jiggles = merges
+                .iter()
+                .map(|merge| Jiggle {
+                    cell: merge.cell,
+                    age: Duration::ZERO,
+                })
+                .collect();
+            for merge in &merges {
+                self.effects.trigger_merge(*merge);
+            }
+            if let Some(spawn) = spawn {
+                self.effects.trigger_spawn(spawn.cell);
+            }
+        }
 
         let Some(remaining) = self.warning else {
             return;
@@ -532,6 +651,139 @@ mod tests {
         assert_eq!(first.warning_active(), second.warning_active());
         assert_eq!(first.table, second.table);
         assert_eq!(first.table_shown, second.table_shown);
+    }
+
+    fn eight_eight_app() -> App {
+        let board = Board::from_rows([[8, 8, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        App::new(Game::from_state(board, 0, 0, 42))
+    }
+
+    #[test]
+    fn move_keys_do_nothing_while_the_slide_is_playing() {
+        let mut app = eight_eight_app();
+        app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        let board = app.game.board;
+        let score = app.game.score;
+        let rng = app.game.rng.state();
+        assert!(app.sliding(), "the move starts a slide");
+
+        // A second move key inside the 140 ms window is swallowed.
+        app.update(
+            Some(Action::Move(Direction::Right)),
+            Duration::from_millis(50),
+        );
+        assert_eq!(app.game.board, board);
+        assert_eq!(app.game.score, score);
+        assert_eq!(app.game.rng.state(), rng);
+        assert!(app.sliding(), "the slide is still playing at 50 ms");
+
+        // At 140 ms the slide is over and the next move applies.
+        app.update(None, Duration::from_millis(90));
+        assert!(!app.sliding());
+        app.update(Some(Action::Move(Direction::Right)), Duration::ZERO);
+        assert_ne!(app.game.board, board, "the post-landing move applies");
+    }
+
+    #[test]
+    fn the_slide_ends_at_140_ms_and_starts_the_effects() {
+        let mut app = eight_eight_app();
+        app.update(
+            Some(Action::Move(Direction::Left)),
+            Duration::from_millis(139),
+        );
+        assert!(app.sliding(), "139 ms is still sliding");
+        assert!(app.effects.ripples().is_empty(), "no ripple before landing");
+        assert!(app.jiggles().is_empty(), "no jiggle before landing");
+
+        app.update(None, Duration::from_millis(1));
+        assert!(!app.sliding(), "140 ms ends the slide");
+        let ripples = app.effects.ripples();
+        assert_eq!(ripples.len(), 1);
+        assert_eq!(ripples[0].cell, 0);
+        assert_eq!(ripples[0].radius(), 0.0, "the ripple starts at age 0");
+        assert!(app.effects.is_flashing(0), "the merged cell flashes");
+        let spawn = app.game.last_spawn.expect("the move spawned a tile");
+        assert!(app.effects.is_popping(spawn.cell), "the spawn pops");
+        assert_eq!(
+            app.jiggles(),
+            &[Jiggle {
+                cell: 0,
+                age: Duration::ZERO
+            }]
+        );
+    }
+
+    #[test]
+    fn the_landing_update_leaves_new_effects_at_zero() {
+        let mut app = eight_eight_app();
+        app.update(
+            Some(Action::Move(Direction::Left)),
+            Duration::from_millis(139),
+        );
+        app.update(None, Duration::from_millis(1));
+
+        assert_eq!(
+            app.effects.ripples()[0].age,
+            Duration::ZERO,
+            "the landing step does not advance the new ripple"
+        );
+        assert_eq!(
+            app.jiggles()[0].age,
+            Duration::ZERO,
+            "the landing step does not advance the new jiggle"
+        );
+
+        app.update(None, Duration::from_millis(16));
+        assert_eq!(app.effects.ripples()[0].age, Duration::from_millis(16));
+        assert_eq!(app.jiggles()[0].age, Duration::from_millis(16));
+    }
+
+    #[test]
+    fn restart_clears_the_slide_and_the_jiggles() {
+        // R during a slide drops the slide.
+        let mut sliding = eight_eight_app();
+        sliding.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        assert!(sliding.sliding());
+        sliding.update(Some(Action::Restart), Duration::ZERO);
+        assert!(!sliding.sliding());
+        assert!(sliding.jiggles().is_empty());
+
+        // R after a landing drops the running jiggles too.
+        let mut jiggling = eight_eight_app();
+        jiggling.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        jiggling.update(None, Duration::from_millis(140));
+        assert!(!jiggling.jiggles().is_empty(), "the merge wobbles");
+        jiggling.update(Some(Action::Restart), Duration::ZERO);
+        assert!(jiggling.jiggles().is_empty());
+        assert!(!jiggling.sliding());
+    }
+
+    #[test]
+    fn animation_state_never_touches_the_game() {
+        let mut app = App::new(Game::new(42, 0));
+        let mut plain = Game::new(42, 0);
+        let directions = [
+            Direction::Left,
+            Direction::Down,
+            Direction::Right,
+            Direction::Up,
+            Direction::Left,
+            Direction::Down,
+            Direction::Right,
+            Direction::Up,
+        ];
+
+        for direction in directions {
+            app.update(Some(Action::Move(direction)), Duration::from_millis(150));
+            plain.apply_move(direction);
+
+            assert_eq!(app.game.board, plain.board);
+            assert_eq!(app.game.score, plain.score);
+            assert_eq!(app.game.best, plain.best);
+            assert_eq!(app.game.won, plain.won);
+            assert_eq!(app.game.game_over, plain.game_over);
+            assert_eq!(app.game.rng.state(), plain.rng.state());
+        }
     }
 
     #[test]
