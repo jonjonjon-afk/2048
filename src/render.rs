@@ -312,7 +312,7 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
         // A jiggling merged cell leaves an empty card in its slot; its body is
         // painted in the second pass below, still in the card layer.
         let origin = cell_origin(layout, cell);
-        let value = if sliding || app.jiggle_dx(cell).is_some() {
+        let value = if sliding || app.jiggle_offset(cell).is_some() {
             0
         } else {
             app.game.board.cell(cell)
@@ -339,11 +339,11 @@ fn render_board_cards(frame: &mut Frame, area: Rect, app: &App) {
     // is deferred to the label layer (SPEC 5.4 Layering).
     for cell in 0..16 {
         let value = app.game.board.cell(cell);
-        let Some(dx) = app.jiggle_dx(cell) else {
+        let Some(offset) = app.jiggle_offset(cell) else {
             continue;
         };
         let bright = app.effects.is_flashing(cell) || app.effects.is_popping(cell);
-        let (x, y) = jiggle_anchor(layout, cell, dx);
+        let (x, y) = jiggle_anchor(layout, cell, offset);
         draw_card_body(frame, x, y, value, bright);
     }
 }
@@ -388,8 +388,8 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
         if value == 0 {
             continue;
         }
-        let (x, y) = match app.jiggle_dx(cell) {
-            Some(dx) => jiggle_anchor(layout, cell, dx),
+        let (x, y) = match app.jiggle_offset(cell) {
+            Some(offset) => jiggle_anchor(layout, cell, offset),
             None => {
                 let origin = cell_origin(layout, cell);
                 (i32::from(origin.x), i32::from(origin.y))
@@ -401,10 +401,10 @@ fn render_board_labels(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// The clamped absolute anchor of a jiggling card.
-fn jiggle_anchor(layout: BoardLayout, cell: usize, dx: i32) -> (i32, i32) {
+fn jiggle_anchor(layout: BoardLayout, cell: usize, (dx, dy): (i32, i32)) -> (i32, i32) {
     let column = (cell % 4) as i32;
     let row = (cell / 4) as i32;
-    let (x, y) = clamped_anchor(column * CELL_PITCH_X + dx, row * CELL_PITCH_Y);
+    let (x, y) = clamped_anchor(column * CELL_PITCH_X + dx, row * CELL_PITCH_Y + dy);
     (layout.left as i32 + x, layout.top as i32 + y)
 }
 

@@ -1014,10 +1014,12 @@ fn the_moving_plaque_is_opaque() {
 #[test]
 fn a_merged_card_jiggles_by_the_documented_offsets() {
     // The pinned demo frames: landing at 144 ms, so jiggle ages 0/48/96/176/240.
+    // The move is Down, so the wobble is vertical: the label row moves while
+    // the anchor's row clamps at 18.
     for (frame, expected) in [
-        (9u64, (26u16, 20u16)),
-        (12, (22, 20)),
-        (15, (25, 20)),
+        (9u64, (24u16, 18u16)),
+        (12, (24, 20)),
+        (15, (24, 19)),
         (20, (24, 20)),
         (24, (24, 20)),
     ] {
@@ -1055,13 +1057,77 @@ fn a_merged_card_jiggles_by_the_documented_offsets() {
 }
 
 #[test]
+fn a_down_move_jiggles_up_first() {
+    // The demo-slide board moved Down: merged cell 14 (anchor 20,18).
+    let mut app = demo_slide_app(9);
+    assert_eq!(app.jiggle_offset(14), Some((0, -2)), "the first beat is -y");
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 24, 18),
+        '4',
+        "the label moves up with the card"
+    );
+
+    app.update(None, Duration::from_millis(40));
+    assert_eq!(app.jiggle_offset(14), Some((0, 2)), "the second beat is +y");
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 24, 20),
+        '4',
+        "the label clamps to the settled row"
+    );
+
+    app.update(None, Duration::from_millis(40));
+    assert_eq!(app.jiggle_offset(14), Some((0, -1)), "the third beat is -y");
+    assert_eq!(play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 24, 19), '4');
+
+    app.update(None, Duration::from_millis(160));
+    assert_eq!(app.jiggle_offset(14), None, "240 ms clears the wobble");
+    assert_eq!(
+        play_cell(&frame_buffer(&app, WIDTH, HEIGHT), 24, 20),
+        '4',
+        "the card is back in its slot"
+    );
+}
+
+#[test]
+fn an_up_merge_jiggles_down_first() {
+    // 8 8 in column 0 moved Up merges at cell 0 (anchor 0,0).
+    let board = Board::from_rows([[8, 0, 0, 0], [8, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    let mut app = App::new(Game::from_state(board, 0, 0, 42));
+    app.update(Some(Action::Move(Direction::Up)), Duration::ZERO);
+    app.update(None, Duration::from_millis(140));
+
+    let down = frame_buffer(&app, WIDTH, HEIGHT);
+    assert_eq!(
+        play_cell(&down, 0, 2),
+        '╭',
+        "the card's top-left border is two rows down at age 0"
+    );
+    assert_eq!(
+        play_cell(&down, 3, 4),
+        '1',
+        "the 16 label starts two rows down"
+    );
+    assert_eq!(play_cell(&down, 4, 4), '6');
+
+    app.update(None, Duration::from_millis(40));
+    let clamped = frame_buffer(&app, WIDTH, HEIGHT);
+    assert_eq!(
+        play_cell(&clamped, 0, 0),
+        '╭',
+        "at 40 ms the -y beat clamps back to row 0"
+    );
+    assert_eq!(play_cell(&clamped, 3, 2), '1');
+    assert_eq!(play_cell(&clamped, 4, 2), '6');
+}
+
+#[test]
 fn the_ripple_crosses_a_jiggling_card() {
-    // Frame 12: merged cell 14 wobbles two columns left, so its body covers
-    // play cells x 18..=26, y 18..=22 while the ripple front is inside it.
+    // Frame 12: merged cell 14 wobbles vertically (Down, +2 clamped back to row
+    // 18), so its body covers the settled slot: play cells x 20..=28, y 18..=22.
     // The body is drawn in the card layer, so ripple glyphs survive on top of
     // it exactly as they do over a settled card (F2, SPEC 5.4 Layering).
     let buffer = frame_buffer(&demo_slide_app(12), WIDTH, HEIGHT);
-    let crossed = (18..=26)
+    let crossed = (20..=28)
         .flat_map(|x| (18..=22).map(move |y| (x, y)))
         .filter(|(x, y)| is_ripple_glyph(play_cell(&buffer, *x, *y)))
         .count();
@@ -1075,14 +1141,18 @@ fn the_ripple_crosses_a_jiggling_card() {
 #[test]
 fn the_jiggle_ends_after_240_ms() {
     let at_176 = demo_slide_app(20);
-    assert_eq!(at_176.jiggle_dx(14), Some(0), "age 176 has no offset");
+    assert_eq!(
+        at_176.jiggle_offset(14),
+        Some((0, 0)),
+        "age 176 has no offset"
+    );
     assert_eq!(
         play_cell(&frame_buffer(&at_176, WIDTH, HEIGHT), 24, 20),
         '4'
     );
 
     let at_240 = demo_slide_app(24);
-    assert_eq!(at_240.jiggle_dx(14), None, "age 240 clears the jiggle");
+    assert_eq!(at_240.jiggle_offset(14), None, "age 240 clears the jiggle");
     assert_eq!(
         play_cell(&frame_buffer(&at_240, WIDTH, HEIGHT), 24, 20),
         '4',
@@ -1106,11 +1176,17 @@ fn the_jiggle_never_leaves_the_board() {
         "the label clamps with the card"
     );
 
-    // Cell 3 with dx = +2 clamps to x = 30, so the card ends at column 38.
+    // A Right move starts with dx = -2: cell 3 moves to x = 28 at age 0.
     let board = Board::from_rows([[0, 0, 8, 8], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
     let mut right = App::new(Game::from_state(board, 0, 0, 42));
     right.update(Some(Action::Move(Direction::Right)), Duration::ZERO);
     right.update(None, Duration::from_millis(140));
+    let first = frame_buffer(&right, WIDTH, HEIGHT);
+    assert_eq!(play_cell(&first, 28, 0), '╭', "the first beat moves left");
+    assert_eq!(play_cell(&first, 31, 2), '1', "the label follows the body");
+
+    // At 40 ms dx = +2 clamps to x = 30, so the card ends at column 38.
+    right.update(None, Duration::from_millis(40));
     let buffer = frame_buffer(&right, WIDTH, HEIGHT);
     assert_eq!(play_cell(&buffer, 30, 0), '╭', "cell 3 clamps to column 30");
     assert_eq!(

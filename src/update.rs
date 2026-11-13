@@ -7,9 +7,9 @@
 use core::time::Duration;
 
 use crate::action::Action;
-use crate::anim::{jiggle_dx, JIGGLE_MILLIS, SLIDE_MILLIS};
+use crate::anim::{jiggle_offset as anim_jiggle_offset, JIGGLE_MILLIS, SLIDE_MILLIS};
 use crate::effects::Effects;
-use crate::game::{Board, Game, Merge, Spawn, Track};
+use crate::game::{Board, Direction, Game, Merge, Spawn, Track};
 use crate::highscore::{HighScores, NAME_MAX_LEN};
 use crate::score::ScoreCount;
 
@@ -34,6 +34,8 @@ pub struct SlideState {
     pub board: Board,
     /// One track per occupied source cell, sorted by `from`.
     pub tracks: Vec<Track>,
+    /// The direction of the move that started the slide.
+    pub direction: Direction,
     /// Merges of the move, triggered when the slide lands.
     pub merges: Vec<Merge>,
     /// Spawn of the move, triggered when the slide lands.
@@ -46,6 +48,8 @@ pub struct SlideState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Jiggle {
     pub cell: usize,
+    /// The move that produced the merge; the wobble follows its axis.
+    pub direction: Direction,
     pub age: Duration,
 }
 
@@ -125,13 +129,14 @@ impl App {
         &self.jiggles
     }
 
-    /// Horizontal jiggle offset in columns for `cell`, or `None` when its card
-    /// is not wobbling (including after the 240 ms deadline).
-    pub fn jiggle_dx(&self, cell: usize) -> Option<i32> {
+    /// Jiggle offset `(dx, dy)` for `cell`, or `None` when its card is not
+    /// wobbling (including after the 240 ms deadline). The vector follows the
+    /// direction of the move that produced the merge (SPEC 5.4).
+    pub fn jiggle_offset(&self, cell: usize) -> Option<(i32, i32)> {
         self.jiggles
             .iter()
             .find(|jiggle| jiggle.cell == cell)
-            .and_then(|jiggle| jiggle_dx(jiggle.age))
+            .and_then(|jiggle| anim_jiggle_offset(jiggle.age, jiggle.direction))
     }
 
     /// True while the `NEW HIGH SCORE` entry overlay is active.
@@ -179,6 +184,7 @@ impl App {
                         self.slide = Some(SlideState {
                             board: before,
                             tracks: outcome.tracks,
+                            direction,
                             merges: outcome.merges,
                             spawn: outcome.spawned,
                             age: Duration::ZERO,
@@ -294,11 +300,11 @@ impl App {
     /// first and only then starts the move's effects at age 0, so the leftover
     /// of that step is dropped rather than applied to the new effects.
     fn advance(&mut self, dt: Duration) {
-        let mut landed: Option<(Vec<Merge>, Option<Spawn>)> = None;
+        let mut landed: Option<(Vec<Merge>, Option<Spawn>, Direction)> = None;
         if let Some(slide) = self.slide.as_mut() {
             let next = slide.age.saturating_add(dt);
             if next >= Duration::from_millis(SLIDE_MILLIS) {
-                landed = Some((slide.merges.clone(), slide.spawn));
+                landed = Some((slide.merges.clone(), slide.spawn, slide.direction));
                 self.slide = None;
             } else {
                 slide.age = next;
@@ -313,11 +319,12 @@ impl App {
         self.jiggles
             .retain(|jiggle| jiggle.age < Duration::from_millis(JIGGLE_MILLIS));
 
-        if let Some((merges, spawn)) = landed {
+        if let Some((merges, spawn, direction)) = landed {
             self.jiggles = merges
                 .iter()
                 .map(|merge| Jiggle {
                     cell: merge.cell,
+                    direction,
                     age: Duration::ZERO,
                 })
                 .collect();
@@ -708,9 +715,38 @@ mod tests {
             app.jiggles(),
             &[Jiggle {
                 cell: 0,
+                direction: Direction::Left,
                 age: Duration::ZERO
             }]
         );
+    }
+
+    #[test]
+    fn a_left_merge_jiggles_in_columns() {
+        let mut app = eight_eight_app();
+        app.update(Some(Action::Move(Direction::Left)), Duration::ZERO);
+        app.update(None, Duration::from_millis(140));
+
+        assert_eq!(app.jiggle_offset(0), Some((2, 0)), "age 0: first beat +x");
+        app.update(None, Duration::from_millis(40));
+        assert_eq!(app.jiggle_offset(0), Some((-2, 0)), "age 40: -x");
+        app.update(None, Duration::from_millis(40));
+        assert_eq!(app.jiggle_offset(0), Some((1, 0)), "age 80: +x");
+        assert_eq!(app.jiggle_offset(1), None, "only the merged cell wobbles");
+    }
+
+    #[test]
+    fn an_up_merge_jiggles_in_rows() {
+        let board = Board::from_rows([[8, 0, 0, 0], [8, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let mut app = App::new(Game::from_state(board, 0, 0, 42));
+        app.update(Some(Action::Move(Direction::Up)), Duration::ZERO);
+        app.update(None, Duration::from_millis(140));
+
+        assert_eq!(app.jiggle_offset(0), Some((0, 2)), "age 0: first beat +y");
+        app.update(None, Duration::from_millis(40));
+        assert_eq!(app.jiggle_offset(0), Some((0, -2)), "age 40: -y");
+        app.update(None, Duration::from_millis(40));
+        assert_eq!(app.jiggle_offset(0), Some((0, 1)), "age 80: +y");
     }
 
     #[test]

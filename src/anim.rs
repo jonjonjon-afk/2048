@@ -79,14 +79,6 @@ pub fn jiggle_offset(age: Duration, direction: Direction) -> Option<(i32, i32)> 
     })
 }
 
-/// Horizontal jiggle offset at `age` for a left/right-style wobble.
-///
-/// Thin pre-M14 wrapper over [`jiggle_offset`] for callers that only need the
-/// column component.
-pub fn jiggle_dx(age: Duration) -> Option<i32> {
-    jiggle_offset(age, Direction::Left).map(|(dx, _)| dx)
-}
-
 /// Clamp a card anchor so a wall merge never draws outside the 39x23 board.
 pub fn clamped_anchor(x: i32, y: i32) -> (i32, i32) {
     (x.clamp(0, MAX_ANCHOR_X), y.clamp(0, MAX_ANCHOR_Y))
