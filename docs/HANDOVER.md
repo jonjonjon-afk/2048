@@ -38,7 +38,9 @@ and exits 0. `--demo`, `--demo-merge` and `--no-persist` always use an in-memory
 store and never touch real data. The live `--demo` and `--demo-merge` modes
 animate the M13 slide and jiggle; `--render-once --demo-merge` keeps the
 slide-less app so the pre-M13 fixtures stay byte-identical, while
-`--render-once --demo-slide` captures the pinned motion frames.
+`--render-once --demo-slide` captures the pinned motion frames. The 240 ms
+merge jiggle follows the merge axis: left/right moves shake in columns,
+up/down moves in rows, with the first beat back toward the incoming tile.
 
 ## Controls
 | Key | Action |
