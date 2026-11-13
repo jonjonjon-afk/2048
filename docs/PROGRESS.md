@@ -3,6 +3,15 @@
 > Owned by the coder. Compact state after M13 round 3; the entry point is
 > `docs/HANDOVER.md`.
 
+## M14 plan (round 1)
+1. Commit the reviewer's SPEC/M14 docs (and the dirty M13 approval) as-is.
+2. R1: `anim::jiggle_offset(age, direction)` and the G22 per-direction tests.
+3. R2: `Jiggle`/`SlideState` carry the move `Direction`; `App::jiggle_offset`.
+4. R3: draw the card and label with `(dx, dy)` on both axes, clamped.
+5. R4: regenerate the three wobble fixtures; fix the ripple test comment/rect.
+6. R5: HANDOVER, A12 and PROGRESS record the merge axis and the real gate.
+7. R6: `ev.sh` labels R1-R6 with the fixture diffs and the exact gate.
+
 ## M13 final state (round 3 — F6 only)
 1. `demo_slide_timeline_is_pinned` now pins `last_spawn == Some(Spawn { cell: 0, value: 2 })`, hand-derived from SPEC 5.2 with seed 42.
 2. The evidence map's GATE and F5 rows now say what happened: round 2 had no gate block (F5 deviated); round 3 adds it.

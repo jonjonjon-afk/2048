@@ -6,7 +6,7 @@
 
 use core::time::Duration;
 
-use crate::game::Track;
+use crate::game::{Direction, Track};
 
 /// Duration of one tile slide, in milliseconds (SPEC 5.4).
 pub const SLIDE_MILLIS: u64 = 140;
@@ -59,15 +59,32 @@ impl Slide {
     }
 }
 
-/// Horizontal jiggle offset at `age`, or `None` once the wobble has ended.
+/// Jiggle offset `(dx, dy)` at `age` for a move in `direction`.
 ///
-/// `k = age_ms / 40` indexes [`JIGGLE_OFFSETS`]; `age >= 240` clears it.
-pub fn jiggle_dx(age: Duration) -> Option<i32> {
+/// `k = age_ms / 40` indexes [`JIGGLE_OFFSETS`] and `age >= 240` clears the
+/// wobble. Left/right moves shake in columns, up/down moves in rows; the first
+/// step points away from the travel direction, back toward the incoming tile,
+/// and the perpendicular component is always 0 (SPEC 5.4, G22).
+pub fn jiggle_offset(age: Duration, direction: Direction) -> Option<(i32, i32)> {
     if age >= Duration::from_millis(JIGGLE_MILLIS) {
         return None;
     }
     let step = (age.as_millis() / u128::from(JIGGLE_STEP_MILLIS)) as usize;
-    Some(JIGGLE_OFFSETS[step])
+    let magnitude = JIGGLE_OFFSETS[step];
+    Some(match direction {
+        Direction::Left => (magnitude, 0),
+        Direction::Right => (-magnitude, 0),
+        Direction::Up => (0, magnitude),
+        Direction::Down => (0, -magnitude),
+    })
+}
+
+/// Horizontal jiggle offset at `age` for a left/right-style wobble.
+///
+/// Thin pre-M14 wrapper over [`jiggle_offset`] for callers that only need the
+/// column component.
+pub fn jiggle_dx(age: Duration) -> Option<i32> {
+    jiggle_offset(age, Direction::Left).map(|(dx, _)| dx)
 }
 
 /// Clamp a card anchor so a wall merge never draws outside the 39x23 board.
@@ -133,30 +150,75 @@ mod tests {
     }
 
     #[test]
-    fn jiggle_offsets_pin_to_the_table() {
-        // G22: k = age / 40 with the age < 240 guard.
-        for (age, expected) in [(0u64, 2), (40, -2), (80, 1), (120, -1), (160, 0), (200, 0)] {
-            assert_eq!(jiggle_dx(millis(age)), Some(expected), "{age} ms");
+    fn jiggle_offsets_pin_the_move_axis() {
+        // G22: k = age / 40 with the age < 240 guard, one axis per direction.
+        let ages = [0u64, 40, 80, 120, 160, 200];
+        let cases = [
+            (
+                Direction::Left,
+                [(2, 0), (-2, 0), (1, 0), (-1, 0), (0, 0), (0, 0)],
+            ),
+            (
+                Direction::Right,
+                [(-2, 0), (2, 0), (-1, 0), (1, 0), (0, 0), (0, 0)],
+            ),
+            (
+                Direction::Up,
+                [(0, 2), (0, -2), (0, 1), (0, -1), (0, 0), (0, 0)],
+            ),
+            (
+                Direction::Down,
+                [(0, -2), (0, 2), (0, -1), (0, 1), (0, 0), (0, 0)],
+            ),
+        ];
+
+        for (direction, expected) in cases {
+            for (age, offset) in ages.into_iter().zip(expected) {
+                assert_eq!(
+                    jiggle_offset(millis(age), direction),
+                    Some(offset),
+                    "{direction:?} at {age} ms"
+                );
+            }
         }
+        assert_eq!(SLIDE_MILLIS, 140);
         assert_eq!(JIGGLE_OFFSETS, [2, -2, 1, -1, 0, 0]);
     }
 
     #[test]
-    fn jiggle_offsets_stop_at_240_ms() {
-        assert_eq!(jiggle_dx(millis(239)), Some(0), "the last step still runs");
-        assert_eq!(jiggle_dx(millis(240)), None);
-        assert_eq!(jiggle_dx(millis(1_000)), None);
+    fn jiggle_offsets_stop_at_240_ms_for_every_direction() {
+        for direction in [
+            Direction::Left,
+            Direction::Right,
+            Direction::Up,
+            Direction::Down,
+        ] {
+            assert_eq!(
+                jiggle_offset(millis(239), direction),
+                Some((0, 0)),
+                "{direction:?} still runs its last step"
+            );
+            assert_eq!(jiggle_offset(millis(240), direction), None, "{direction:?}");
+            assert_eq!(
+                jiggle_offset(millis(1_000), direction),
+                None,
+                "{direction:?}"
+            );
+        }
         assert_eq!(JIGGLE_MILLIS, 240);
     }
 
     #[test]
     fn anchors_are_clamped_to_the_board() {
-        // A cell-0 merge at age 40 has dx = -2: slot 0 - 2 clamps to 0.
-        assert_eq!(jiggle_dx(millis(40)), Some(-2));
+        // A cell-0 left merge at age 40 has dx = -2: slot 0 - 2 clamps to 0.
+        assert_eq!(jiggle_offset(millis(40), Direction::Left), Some((-2, 0)));
         assert_eq!(clamped_anchor(0 - 2, 0), (0, 0));
-        // A cell-3 merge at age 0 has dx = +2: slot 30 + 2 clamps to 30.
-        assert_eq!(jiggle_dx(Duration::ZERO), Some(2));
+        // A cell-3 left merge at age 0 has dx = +2: slot 30 + 2 clamps to 30.
+        assert_eq!(jiggle_offset(Duration::ZERO, Direction::Left), Some((2, 0)));
         assert_eq!(clamped_anchor(30 + 2, 18), (30, 18));
+        // A bottom-row down merge at age 40 has dy = +2: row 18 + 2 clamps to 18.
+        assert_eq!(jiggle_offset(millis(40), Direction::Down), Some((0, 2)));
+        assert_eq!(clamped_anchor(0, 18 + 2), (0, 18));
         // Any out-of-range pair clamps to the documented board limits.
         assert_eq!(clamped_anchor(99, 99), (MAX_ANCHOR_X, MAX_ANCHOR_Y));
         assert_eq!(clamped_anchor(-99, -99), (0, 0));
